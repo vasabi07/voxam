@@ -39,3 +39,17 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+/app/generated/prisma
+
+# Python
+../python/.env
+../python/__pycache__/
+../python/*.pyc
+../python/*.pyo
+../python/exam-agent-*.json
+../python/qp_output.json
+
+# Documentation (keep only essential ones)
+../AUDIO_BREAKING_FIX.md
+../FRONTEND_AUDIO_FIX.md
