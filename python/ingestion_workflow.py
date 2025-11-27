@@ -4,9 +4,62 @@ from dotenv import load_dotenv
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import StrOutputParser
 from pydantic import BaseModel, Field
-from typing import List, Literal, Optional
+from typing import List, Literal, Optional, Tuple
 from enum import Enum
+from openai import OpenAI
+from neo4j import GraphDatabase
+import os
+import json
+import time
+import asyncio
+from concurrent.futures import ThreadPoolExecutor
+
 load_dotenv()
+
+# OpenAI client for embeddings
+openai_client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+
+# Embedding models
+EMBED_MODEL_SMALL = "text-embedding-3-small"  # 1536 dims
+EMBED_MODEL_LARGE = "text-embedding-3-large"  # 3072 dims (optional)
+
+# Neo4j credentials
+NEO4J_URI = os.getenv("NEO4J_URI")
+NEO4J_USER = os.getenv("NEO4J_USER")
+NEO4J_PASSWORD = os.getenv("NEO4J_PASSWORD")
+
+def embed_text(text: str, model: str = EMBED_MODEL_SMALL) -> List[float]:
+    """
+    Generate embeddings for text using OpenAI.
+    Truncates long text to stay within token limits.
+    """
+    # Rough guardrail: ~8000 chars ≈ 2000 tokens (safe for text-embedding-3)
+    text = text[:8000]
+    try:
+        response = openai_client.embeddings.create(
+            model=model,
+            input=text
+        )
+        return response.data[0].embedding
+    except Exception as e:
+        print(f"❌ Failed to generate embedding: {e}")
+        return []
+
+def get_neo4j_driver():
+    """Get Neo4j database driver"""
+    if not all([NEO4J_URI, NEO4J_USER, NEO4J_PASSWORD]):
+        raise ValueError("Missing Neo4j credentials in .env: NEO4J_URI, NEO4J_USER, NEO4J_PASSWORD")
+    
+    try:
+        driver = GraphDatabase.driver(NEO4J_URI, auth=(NEO4J_USER, NEO4J_PASSWORD))
+        # Test connection
+        with driver.session() as session:
+            session.run("RETURN 1")
+        print("✅ Connected to Neo4j")
+        return driver
+    except Exception as e:
+        print(f"❌ Cannot connect to Neo4j: {e}")
+        raise e
 
 
 """
@@ -64,17 +117,31 @@ class ContentBlock:
         self.questions: List[Question] = []
         self.embeddings: List[float] = []
         self.summary: str = ""
+        self.meta: dict = {}  # Store page numbers, etc.
+        self.page_number: int = 1
+        self.coordinates: List[List[float]] = [] # Raw polygon points
 
 class IngestionPipeline:
-    def __init__(self,config):
+    def __init__(self, config):
         self.config = config
-        self.vision_llm = init_chat_model(model=config.get("vision_llm","gpt-4o-mini"),temperature=0)  # Faster for captions
-        self.text_llm = init_chat_model(model=config.get("text_llm","gpt-4.1"),temperature=0)
-        # self.question_prompt = self._create_question_prompt()
+        self.vision_llm = init_chat_model(model=config.get("vision_llm", "gpt-4o-mini"), temperature=0)
+        self.text_llm = init_chat_model(model=config.get("text_llm", "gpt-4.1"), temperature=0)
+        self.neo4j_driver = None
+        
+        # Initialize Neo4j if credentials available
+        try:
+            self.neo4j_driver = get_neo4j_driver()
+        except Exception as e:
+            print(f"⚠️  Neo4j not available: {e}")
+            print("Continuing without graph database persistence...")
+
 
         #extract pdf chunks
     def extract_pdf(self, pdf_path: str) -> List[ContentBlock]:
         """Extract PDF content and organize into ContentBlocks"""
+        print("⏳ Starting PDF extraction...")
+        start_time = time.time()
+        
         chunks = partition_pdf(
             filename=pdf_path,
             infer_table_structure=True,
@@ -88,6 +155,12 @@ class IngestionPipeline:
             overlap=200,
         )
         
+        parse_time = time.time() - start_time
+        print(f"   ✅ PDF parsed in {parse_time:.2f}s")
+        
+        # Collect all images with their block indices for batch processing
+        all_images: List[Tuple[int, str]] = []  # (block_idx, base64)
+        
         content_blocks = []
         for idx, chunk in enumerate(chunks):
             block = ContentBlock()
@@ -95,29 +168,76 @@ class IngestionPipeline:
             
             # All chunks get text content
             block.text_content = str(chunk)
+
+            # Extract coordinates and page info
+            if hasattr(chunk, "metadata"):
+                # Page Number
+                block.page_number = chunk.metadata.page_number if chunk.metadata.page_number else 1
+                
+                # Coordinates (Bounding Box)
+                if hasattr(chunk.metadata, "coordinates") and chunk.metadata.coordinates:
+                    block.coordinates = list(chunk.metadata.coordinates.points)
             
-            # Handle different chunk types for additional processing
+            # Handle different chunk types - collect images but don't caption yet
             if "CompositeElement" in str(type(chunk)):
-                # Extract images and generate captions immediately  
-                block.image_captions = self._extract_images_from_chunk(chunk)
-                # CompositeElements might also contain tables within them
+                # Extract image base64 data (don't caption yet)
+                images = self._extract_image_base64_from_chunk(chunk)
+                for img_b64 in images:
+                    all_images.append((idx, img_b64))
+                # CompositeElements might also contain tables
                 block.related_tables.extend(self._extract_tables_from_chunk(chunk))
                 
             elif "Table" in str(type(chunk)):
-                # This chunk IS a table - store the table object
                 block.related_tables = [chunk]
-            
-            # Create combined context using existing method
-            block.combined_context = self._combine_context(block)
             
             content_blocks.append(block)
         
-        return content_blocks
-    def enrich_content_blocks(self, content_blocks: List[ContentBlock]) -> List[ContentBlock]:
-        """Enrich content blocks with additional metadata and processing"""
+        # Batch caption all images in parallel
+        if all_images:
+            print(f"🖼️  Captioning {len(all_images)} images in parallel...")
+            caption_start = time.time()
+            captions = self._batch_caption_images([img for _, img in all_images])
+            
+            # Assign captions back to their blocks
+            for (block_idx, _), caption in zip(all_images, captions):
+                content_blocks[block_idx].image_captions.append(caption)
+            
+            print(f"   ✅ Captions done in {time.time() - caption_start:.2f}s")
+        
+        # Build combined context for all blocks
         for block in content_blocks:
             block.combined_context = self._combine_context(block)
+        
+        elapsed = time.time() - start_time
+        print(f"✅ PDF extraction completed in {elapsed:.2f}s ({len(content_blocks)} blocks)")
+        return content_blocks
+    def enrich_content_blocks(self, content_blocks: List[ContentBlock]) -> List[ContentBlock]:
+        """Enrich content blocks with additional metadata, embeddings, and questions"""
+        total_start = time.time()
+        print(f"\n⏳ Enriching {len(content_blocks)} content blocks...")
+        
+        for i, block in enumerate(content_blocks):
+            block_start = time.time()
+            block.combined_context = self._combine_context(block)
+            
+            # Generate embeddings for the combined context
+            if block.combined_context:
+                embed_start = time.time()
+                print(f"🔢 Generating embeddings for block {i+1}/{len(content_blocks)}...")
+                block.embeddings = embed_text(block.combined_context)
+                print(f"   ✅ Embeddings done in {time.time() - embed_start:.2f}s")
+            
+            # Generate questions
+            question_start = time.time()
+            print(f"❓ Generating questions for block {i+1}/{len(content_blocks)}...")
             block.questions = self._generate_questions(block)
+            print(f"   ✅ Questions done in {time.time() - question_start:.2f}s ({len(block.questions)} questions)")
+            
+            block_elapsed = time.time() - block_start
+            print(f"📦 Block {i+1}/{len(content_blocks)} enriched in {block_elapsed:.2f}s\n")
+            
+        total_elapsed = time.time() - total_start
+        print(f"✅ All blocks enriched in {total_elapsed:.2f}s")
         return content_blocks
 
     def _combine_context(self, block: ContentBlock) -> str:
@@ -176,58 +296,55 @@ Ensure questions reference images and tables when mentioned in the content.
             print(f"Failed to generate questions: {e}")
             return []
 
-    def _extract_images_from_chunk(self, chunk) -> List[str]:
-        """Extract images from chunk and generate captions immediately"""
-        captions = []
+    def _extract_image_base64_from_chunk(self, chunk) -> List[str]:
+        """Extract base64 image data from chunk without captioning"""
+        images = []
         if hasattr(chunk, 'metadata') and hasattr(chunk.metadata, 'orig_elements'):
             for el in chunk.metadata.orig_elements:
                 if "Image" in str(type(el)):
                     if hasattr(el.metadata, 'image_base64') and el.metadata.image_base64:
                         try:
-                            # Validate base64 image
                             import base64
-                            base64.b64decode(el.metadata.image_base64)
-                            
-                            # Generate caption immediately using GPT-4o
-                            caption = self._generate_image_caption(el.metadata.image_base64)
-                            captions.append(caption)
-                            print(f"Generated caption for image")
-                            
+                            base64.b64decode(el.metadata.image_base64)  # Validate
+                            images.append(el.metadata.image_base64)
                         except Exception as e:
-                            print(f"Failed to process image: {e}")
+                            print(f"Invalid image base64: {e}")
                             continue
-        return captions
+        return images
     
-    def _generate_image_caption(self, image_base64: str) -> str:
-        """Generate caption for a single image using GPT-4o"""
-        # Correct message format for LangChain vision models
-        messages = [
-            {
-                "role": "user",
-                "content": [
-                    {
-                        "type": "text",
-                        "text": "Describe this educational image in detail. Focus on scientific concepts, diagrams, data, experimental setups, charts, or any educational content shown."
-                    },
-                    {
-                        "type": "image_url",
-                        "image_url": {"url": f"data:image/jpeg;base64,{image_base64}"}
-                    }
-                ]
-            }
-        ]
+    def _batch_caption_images(self, images: List[str], max_workers: int = 5) -> List[str]:
+        """
+        Caption multiple images in parallel using ThreadPoolExecutor.
+        GPT-4o-mini handles ~5 concurrent requests well within rate limits.
+        """
+        def caption_single(img_b64: str) -> str:
+            messages = [
+                {
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "text",
+                            "text": "Describe this educational image in detail. Focus on scientific concepts, diagrams, data, experimental setups, charts, or any educational content shown."
+                        },
+                        {
+                            "type": "image_url",
+                            "image_url": {"url": f"data:image/jpeg;base64,{img_b64}"}
+                        }
+                    ]
+                }
+            ]
+            try:
+                response = self.vision_llm.invoke(messages)
+                return response.content
+            except Exception as e:
+                print(f"Failed to caption image: {e}")
+                return "Image description unavailable"
         
-        try:
-            response = self.vision_llm.invoke(messages)
-            return response.content
-        except Exception as e:
-            print(f"Failed to generate image caption: {e}")
-            return "Image description unavailable"
-            response = self.vision_llm.invoke(messages)
-            return response.content
-        except Exception as e:
-            print(f"Failed to generate image caption: {e}")
-            return "Image description unavailable"
+        # Parallel execution
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            captions = list(executor.map(caption_single, images))
+        
+        return captions
     
     def _extract_tables_from_chunk(self, chunk) -> List:
         """Extract table objects from a CompositeElement chunk"""
@@ -238,32 +355,166 @@ Ensure questions reference images and tables when mentioned in the content.
                     tables.append(el)
         return tables
     
-    def generate_questions(self, content_blocks: List[ContentBlock]) -> List[ContentBlock]:
-        """Generate structured questions for all content blocks"""
-        question_chain = self._create_question_chain()
+    # ========== Neo4j Write Functions ==========
+    
+    def _upsert_document(self, tx, doc_meta: dict):
+        """Create or update document node in Neo4j"""
+        tx.run(
+            """
+            MERGE (u:User {id: $user_id})
+            MERGE (d:Document {documentId: $doc_id})
+            ON CREATE SET 
+                d.title = $title,
+                d.source = $source,
+                d.created_at = datetime()
+            MERGE (u)-[:UPLOADED]->(d)
+            """,
+            **doc_meta
+        )
+    
+    def _create_content_block(self, tx, payload: dict):
+        """Create ContentBlock node with embeddings"""
+        tx.run(
+            """
+            MATCH (d:Document {documentId: $doc_id})
+            CREATE (cb:ContentBlock {
+                block_id: $block_id,
+                chunk_index: $chunk_index,
+                text_content: $text_content,
+                summary: $summary,
+                combined_context: $combined_context,
+                page_from: $page_from,
+                page_to: $page_to,
+                has_images: $has_images,
+                has_tables: $has_tables,
+                image_count: $image_count,
+                table_count: $table_count,
+                embedding: $embedding,
+                page_number: $page_number,
+                coordinates: $coordinates
+            })
+            MERGE (d)-[:HAS_CONTENT_BLOCK]->(cb)
+            """,
+            **payload
+        )
+    
+    def _create_question_set(self, tx, block_id: str, questions: List[Question], doc_id: str):
+        """
+        Create a single QuestionSet node containing all questions for a ContentBlock.
+        Stores questions as JSON array instead of separate nodes (78% node reduction).
+        """
+        from datetime import datetime
         
-        for block in content_blocks:
-            if block.combined_context:
-                try:
-                    # Generate structured questions using QuestionSet
-                    question_set: QuestionSet = question_chain.invoke({"content": block.combined_context})
-                    
-                    # Combine all questions into single list
-                    block.questions = (
-                        question_set.long_answer_questions + 
-                        question_set.multiple_choice_questions
+        # Convert questions to JSON-serializable format
+        questions_json = json.dumps([
+            {
+                "question_id": f"{block_id}::q::{idx}",
+                "text": q.text,
+                "bloom_level": q.bloom_level.value,
+                "difficulty": q.difficulty.value,
+                "question_type": q.question_type.value,
+                "expected_time": q.expected_time,
+                "key_points": q.key_points or [],
+                "options": q.options or [],
+                "correct_answer": q.correct_answer or "",
+                "explanation": q.explanation or ""
+            }
+            for idx, q in enumerate(questions)
+        ])
+        
+        # Calculate difficulty distribution
+        difficulty_dist = {}
+        for q in questions:
+            diff = q.difficulty.value
+            difficulty_dist[diff] = difficulty_dist.get(diff, 0) + 1
+        
+        tx.run(
+            """
+            MATCH (cb:ContentBlock {block_id: $block_id})
+            CREATE (qs:QuestionSet {
+                questionset_id: $questionset_id,
+                questions: $questions_json,
+                total_count: $total_count,
+                difficulty_distribution: $difficulty_dist,
+                generated_at: $generated_at,
+                doc_id: $doc_id
+            })
+            CREATE (cb)-[:HAS_QUESTIONS]->(qs)
+            """,
+            block_id=block_id,
+            questionset_id=f"{block_id}::qs",
+            questions_json=questions_json,
+            total_count=len(questions),
+            difficulty_dist=json.dumps(difficulty_dist),
+            generated_at=datetime.utcnow().isoformat(),
+            doc_id=doc_id
+        )
+    
+    def persist_to_neo4j(self, doc_id: str, doc_meta: dict, content_blocks: List[ContentBlock]):
+        """
+        Persist document, content blocks, and questions to Neo4j.
+        Creates the full graph structure with embeddings.
+        """
+        if not self.neo4j_driver:
+            print("⚠️  Neo4j not available, skipping graph persistence")
+            return
+        
+        persist_start = time.time()
+        print("\n💾 Persisting to Neo4j...")
+        
+        with self.neo4j_driver.session() as session:
+            # 1. Create/update document
+            session.execute_write(self._upsert_document, doc_meta)
+            print(f"✅ Created document: {doc_id}")
+            
+            # 2. Create content blocks
+            block_ids = []
+            for i, block in enumerate(content_blocks):
+                block_id = f"{doc_id}::block::{i}"
+                block_ids.append(block_id)
+                
+                # Extract page metadata if available
+                page_from = block.meta.get("page_from")
+                page_to = block.meta.get("page_to")
+                
+                payload = {
+                    "doc_id": doc_id,
+                    "block_id": block_id,
+                    "chunk_index": i,
+                    "text_content": block.text_content[:5000],  # Truncate long text
+                    "summary": block.summary or "",
+                    "combined_context": block.combined_context[:5000],
+                    "page_from": page_from,
+                    "page_to": page_to,
+                    "has_images": len(block.image_captions) > 0,
+                    "has_tables": len(block.related_tables) > 0,
+                    "image_count": len(block.image_captions),
+                    "table_count": len(block.related_tables),
+                    "embedding": block.embeddings or [],
+                    "page_number": block.page_number,
+                    "coordinates": json.dumps(block.coordinates) if block.coordinates else "[]"
+                }
+                
+                session.execute_write(self._create_content_block, payload)
+                print(f"✅ Created ContentBlock {i+1}/{len(content_blocks)}")
+                
+                # 3. Create QuestionSet for this block (all questions in one node)
+                if block.questions:
+                    session.execute_write(
+                        self._create_question_set,
+                        block_id,
+                        block.questions,
+                        doc_id
                     )
-                    
-                    print(f"✅ Generated {len(block.questions)} questions for chunk {block.chunk_index + 1}")
-                    
-                except Exception as e:
-                    print(f"❌ Failed to generate questions for chunk {block.chunk_index + 1}: {e}")
-                    block.questions = []
+                    print(f"  ✅ Created QuestionSet with {len(block.questions)} questions")
         
-        return content_blocks
+        persist_elapsed = time.time() - persist_start
+        print(f"✅ Successfully persisted to Neo4j in {persist_elapsed:.2f}s")
 
 if __name__ == "__main__":
-    print("🚀 Starting PDF Ingestion Pipeline Test...")
+    pipeline_start = time.time()
+    print("🚀 Starting PDF Ingestion Pipeline with Graph RAG...")
+    print(f"⏰ Started at: {time.strftime('%H:%M:%S')}")
     
     config = {
         "vision_llm": "gpt-4o-mini",
@@ -272,57 +523,40 @@ if __name__ == "__main__":
     
     pipeline = IngestionPipeline(config)
     
+    # Document metadata
+    doc_id = "chapter1_test"
+    doc_meta = {
+        "user_id": "test_user",
+        "doc_id": doc_id,
+        "title": "Chapter 1 Test Document",
+        "source": "chapter1.pdf"
+    }
+    
     # Extract PDF content
     print("\n📄 Extracting PDF content...")
     content_blocks = pipeline.extract_pdf("chapter1.pdf")
     print(f"✅ Extracted {len(content_blocks)} content blocks")
     
-    # Generate questions for first block only (for testing)
+    # Enrich ALL blocks with embeddings and questions
     if content_blocks:
-        first_block = content_blocks[0]
-        if first_block.combined_context:
-            print(f"\n🤔 Generating questions for first block...")
-            print(f"Block has {len(first_block.combined_context)} characters of context")
-            
-            # Generate questions for just the first block
-            content_blocks_with_questions = pipeline.generate_questions([first_block])
-            
-            # Display the generated questions
-            block = content_blocks_with_questions[0]
-            if block.questions:
-                print(f"\n🎯 GENERATED {len(block.questions)} QUESTIONS:")
-                print("=" * 60)
-                
-                for i, question in enumerate(block.questions, 1):
-                    print(f"\nQuestion {i}:")
-                    print(f"Type: {question.question_type.value}")
-                    print(f"Bloom Level: {question.bloom_level.value}")
-                    print(f"Difficulty: {question.difficulty.value}")
-                    print(f"Expected Time: {question.expected_time} minutes")
-                    print(f"Text: {question.text}")
-                    
-                    if question.options:
-                        print("Options:")
-                        for j, option in enumerate(question.options):
-                            print(f"  {chr(65+j)}) {option}")
-                        print(f"Correct Answer: {question.correct_answer}")
-                        if question.explanation:
-                            print(f"Explanation: {question.explanation}")
-                    else:
-                        print(f"Key Points: {question.key_points}")
-                    
-                    print("-" * 50)
-                    
-                print(f"\n📊 Question Summary:")
-                long_answers = [q for q in block.questions if q.question_type == QuestionType.LONG_ANSWER]
-                mcqs = [q for q in block.questions if q.question_type == QuestionType.MULTIPLE_CHOICE]
-                print(f"Long Answer Questions: {len(long_answers)}")
-                print(f"Multiple Choice Questions: {len(mcqs)}")
-                
-            else:
-                print("❌ No questions generated")
-        else:
-            print("❌ No combined context available for first block")
+        print(f"\n🔧 Enriching all {len(content_blocks)} blocks...")
+        enriched_blocks = pipeline.enrich_content_blocks(content_blocks)
+        
+        # Display summary for all blocks
+        print("\n📊 Block Summaries:")
+        total_questions = 0
+        for i, block in enumerate(enriched_blocks):
+            total_questions += len(block.questions)
+            print(f"  Block {i+1}: {len(block.text_content)} chars, {len(block.image_captions)} images, {len(block.questions)} questions")
+        
+        print(f"\n📈 Totals: {len(enriched_blocks)} blocks, {total_questions} questions")
+        
+        # Persist to Neo4j
+        pipeline.persist_to_neo4j(doc_id, doc_meta, enriched_blocks)
+        
+        total_elapsed = time.time() - pipeline_start
+        print(f"\n✅ Pipeline complete! Ready for vector search.")
+        print(f"⏱️  Total time: {total_elapsed:.2f}s ({total_elapsed/60:.1f} min)")
     else:
         print("❌ No content blocks extracted")
 

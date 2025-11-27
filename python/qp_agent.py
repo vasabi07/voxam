@@ -17,10 +17,15 @@ import json
 from agents.exam_agent import REDIS_URI
 load_dotenv()
 
-# Neo4j connection details (read from environment where possible)
-# Set NEO4J_URI, NEO4J_USER and NEO4J_PASSWORD in your environment for production
-URI = os.getenv("NEO4J_URI", "neo4j+s://4368da67.databases.neo4j.io")
-AUTH = (os.getenv("NEO4J_USER", "neo4j"), os.getenv("NEO4J_PASSWORD", "R3vOL-3PBOuI-pJDxtla-PhRnPRdJNfQJOT6gBfrjb0"))
+# Neo4j connection details from environment
+URI = os.getenv("NEO4J_URI")
+NEO4J_USER = os.getenv("NEO4J_USER")
+NEO4J_PASSWORD = os.getenv("NEO4J_PASSWORD")
+
+if not all([URI, NEO4J_USER, NEO4J_PASSWORD]):
+    raise ValueError("Missing required Neo4j environment variables: NEO4J_URI, NEO4J_USER, NEO4J_PASSWORD")
+
+AUTH = (NEO4J_USER, NEO4J_PASSWORD)
 
 llm = init_chat_model(model="gpt-4.1",temperature=0)
 
@@ -74,52 +79,60 @@ class QPInputState(BaseModel):
 def get_all_questions_metadata(input_state: QPInputState):
     """
     Fetch lightweight question metadata for planning.
-    Returns only essential fields needed for question selection.
+    Now queries QuestionSet nodes and parses JSON to get individual questions.
     """
     print(f"📋 Fetching question metadata for document: {input_state.document_id}")
     
     driver = get_database_driver()
     with driver as session:
+        # Query QuestionSet nodes (not individual Question nodes)
         query = """
-        MATCH (d:Document {id: $document_id})-[:HAS_CHUNK]->(c:Chunk)-[:HAS_QUESTION]->(q:Question)
-        WHERE ($difficulty_levels IS NULL OR q.difficulty IN $difficulty_levels)
-        AND ($question_types IS NULL OR q.question_type IN $question_types)
-        AND ($bloom_levels IS NULL OR q.bloom_level IN $bloom_levels)
+        MATCH (d:Document {documentId: $document_id})
+              -[:HAS_CONTENT_BLOCK]->(cb:ContentBlock)
+              -[:HAS_QUESTIONS]->(qs:QuestionSet)
         RETURN 
-            q.id as question_id,
-            coalesce(q.expected_time, 5) as expected_time,
-            coalesce(q.bloom_level, 'remember') as bloom_level,
-            coalesce(q.difficulty, 'basic') as difficulty,
-            coalesce(q.question_type, 'multiple_choice') as question_type,
-            c.id as chunk_id,
-            coalesce(c.chunk_index, 0) as chunk_index
-        ORDER BY c.chunk_index
+            cb.block_id as chunk_id,
+            coalesce(cb.chunk_index, 0) as chunk_index,
+            qs.questions as questions_json
+        ORDER BY cb.chunk_index
         """
         
         result = session.execute_query(
             query,
-            document_id=input_state.document_id,
-            difficulty_levels=input_state.difficulty_levels,
-            question_types=input_state.question_types,
-            bloom_levels=input_state.bloom_levels
+            document_id=input_state.document_id
         )
         
-        # Convert to list of dictionaries with safe field access
+        # Parse JSON and flatten questions with filtering
         questions_metadata = []
         for record in result.records:
             try:
-                questions_metadata.append({
-                    "question_id": record.get("question_id", ""),
-                    "expected_time": record.get("expected_time", 5),
-                    "bloom_level": record.get("bloom_level", "remember"),
-                    "difficulty": record.get("difficulty", "basic"),
-                    "question_type": record.get("question_type", "multiple_choice"),
-                    "chunk_id": record.get("chunk_id", ""),
-                    "chunk_index": record.get("chunk_index", 0)
-                })
+                chunk_id = record.get("chunk_id", "")
+                chunk_index = record.get("chunk_index", 0)
+                questions_json = record.get("questions_json", "[]")
+                
+                # Parse the JSON array of questions
+                block_questions = json.loads(questions_json) if questions_json else []
+                
+                for q in block_questions:
+                    # Apply filters
+                    if input_state.difficulty_levels and q.get("difficulty") not in input_state.difficulty_levels:
+                        continue
+                    if input_state.question_types and q.get("question_type") not in input_state.question_types:
+                        continue
+                    if input_state.bloom_levels and q.get("bloom_level") not in input_state.bloom_levels:
+                        continue
+                    
+                    questions_metadata.append({
+                        "question_id": q.get("question_id", ""),
+                        "expected_time": q.get("expected_time", 5),
+                        "bloom_level": q.get("bloom_level", "remember"),
+                        "difficulty": q.get("difficulty", "basic"),
+                        "question_type": q.get("question_type", "multiple_choice"),
+                        "chunk_id": chunk_id,
+                        "chunk_index": chunk_index
+                    })
             except Exception as e:
                 print(f"⚠️ Error processing record: {e}")
-                print(f"Record keys: {list(record.keys())}")
                 continue
         
         print(f"✅ Found {len(questions_metadata)} questions matching criteria")
@@ -132,7 +145,7 @@ def get_all_questions_metadata(input_state: QPInputState):
 def get_selected_questions_with_content(input_state: QPInputState):
     """
     Fetch full question content for selected questions only.
-    This is called after planning to get complete question data.
+    Now queries QuestionSet and filters by selected IDs in Python.
     """
     if not input_state.selected_question_ids:
         print("⚠️ No questions selected yet")
@@ -140,51 +153,61 @@ def get_selected_questions_with_content(input_state: QPInputState):
     
     print(f"📄 Fetching full content for {len(input_state.selected_question_ids)} selected questions")
     
+    # Build a set of selected IDs for fast lookup
+    selected_ids_set = set(input_state.selected_question_ids)
+    
     driver = get_database_driver()
     with driver as session:
+        # Query QuestionSet nodes with their ContentBlock context
         query = """
-        MATCH (c:Chunk)-[:HAS_QUESTION]->(q:Question)
-        WHERE q.id IN $question_ids
+        MATCH (cb:ContentBlock)-[:HAS_QUESTIONS]->(qs:QuestionSet)
+        WHERE cb.doc_id = $document_id OR qs.doc_id = $document_id
         RETURN 
-            coalesce(q.id, '') as question_id,
-            coalesce(q.text, '') as text,
-            coalesce(q.options, []) as options,
-            coalesce(q.correct_answer, '') as correct_answer,
-            coalesce(q.explanation, '') as explanation,
-            coalesce(q.key_points, []) as key_points,
-            coalesce(q.expected_time, 0) as expected_time,
-            coalesce(q.bloom_level, '') as bloom_level,
-            coalesce(q.difficulty, '') as difficulty,
-            coalesce(q.question_type, '') as question_type,
-            coalesce(c.content, '') as context_content,
-            coalesce(c.chunk_index, 0) as chunk_index,
-            coalesce(c.id, '') as chunk_id
-        ORDER BY c.chunk_index
+            cb.block_id as chunk_id,
+            coalesce(cb.chunk_index, 0) as chunk_index,
+            coalesce(cb.combined_context, '') as context_content,
+            qs.questions as questions_json
+        ORDER BY cb.chunk_index
         """
         
         result = session.execute_query(
             query,
-            question_ids=input_state.selected_question_ids
+            document_id=input_state.document_id
         )
         
-        # Convert to list of dictionaries with safe field access
+        # Parse JSON and filter to only selected questions
         questions_with_content = []
         for record in result.records:
-            questions_with_content.append({
-                "question_id": record.get("question_id", ""),
-                "text": record.get("text", ""),
-                "options": record.get("options", []),
-                "correct_answer": record.get("correct_answer", ""),
-                "explanation": record.get("explanation", ""),
-                "key_points": record.get("key_points", []),
-                "expected_time": record.get("expected_time", 0),
-                "bloom_level": record.get("bloom_level", ""),
-                "difficulty": record.get("difficulty", ""),
-                "question_type": record.get("question_type", ""),
-                "context_content": record.get("context_content", ""),
-                "chunk_index": record.get("chunk_index", 0),
-                "chunk_id": record.get("chunk_id", "")
-            })
+            try:
+                chunk_id = record.get("chunk_id", "")
+                chunk_index = record.get("chunk_index", 0)
+                context_content = record.get("context_content", "")
+                questions_json = record.get("questions_json", "[]")
+                
+                # Parse the JSON array of questions
+                block_questions = json.loads(questions_json) if questions_json else []
+                
+                for q in block_questions:
+                    # Only include selected questions
+                    if q.get("question_id") in selected_ids_set:
+                        questions_with_content.append({
+                            "question_id": q.get("question_id", ""),
+                            "text": q.get("text", ""),
+                            "options": q.get("options", []),
+                            "correct_answer": q.get("correct_answer", ""),
+                            "explanation": q.get("explanation", ""),
+                            "key_points": q.get("key_points", []),
+                            "expected_time": q.get("expected_time", 0),
+                            "bloom_level": q.get("bloom_level", ""),
+                            "difficulty": q.get("difficulty", ""),
+                            "question_type": q.get("question_type", ""),
+                            "context_content": context_content,
+                            "chunk_index": chunk_index,
+                            "chunk_id": chunk_id
+                        })
+            except Exception as e:
+                print(f"⚠️ Error processing record: {e}")
+                continue
         
         print(f"✅ Retrieved full content for {len(questions_with_content)} questions")
         
@@ -343,40 +366,58 @@ def group_questions_by_context(state: QPInputState) -> QPInputState:
             context_groups[chunk_id] = {
                 'chunk_id': chunk_id,
                 'chunk_index': question.get('chunk_index', 0),
-                'context': question.get('context_content', ''),  # Renamed from context_content to context
+                'context': question.get('context_content', ''),
                 'questions': []
             }
         
-        # Add question in simplified format - only essential fields
+        # Add question with ALL fields needed by exam agent
         question_data = {
             'question_id': question.get('question_id'),
             'text': question.get('text'),
-            'context': question.get('context_content', '')  # Each question gets its context
+            'question_type': question.get('question_type', 'long_answer'),
+            'difficulty': question.get('difficulty', 'basic'),
+            'bloom_level': question.get('bloom_level', 'remember'),
+            'expected_time': question.get('expected_time', 5),
+            'key_points': question.get('key_points', []),
+            # MCQ-specific fields
+            'options': question.get('options', []),
+            'correct_answer': question.get('correct_answer', ''),
+            'explanation': question.get('explanation', ''),
         }
         
         context_groups[chunk_id]['questions'].append(question_data)
     
-    # Convert to flat list of questions (simplified format for exam agent)
+    # Convert to flat list of questions for exam agent
     # Each question will have its own context, making it easy for Redis storage
-    simplified_questions = []
+    full_questions = []
     
     for group in sorted(context_groups.values(), key=lambda x: x['chunk_index']):
         for question in group['questions']:
-            simplified_questions.append({
+            full_questions.append({
                 'question_id': question['question_id'],
-                'text': question['text'], 
-                'context': group['context']  # Use the group's context for all questions in that group
+                'text': question['text'],
+                'question_type': question['question_type'],
+                'difficulty': question['difficulty'],
+                'bloom_level': question['bloom_level'],
+                'expected_time': question['expected_time'],
+                'key_points': question['key_points'],
+                'options': question['options'],
+                'correct_answer': question['correct_answer'],
+                'explanation': question['explanation'],
+                'context': group['context']  # Use the group's context for all questions
             })
     
-    # Store as grouped questions for compatibility, but in simplified format
-    state.grouped_questions = simplified_questions
+    # Store as grouped questions
+    state.grouped_questions = full_questions
     
     # Print summary
-    total_questions = len(simplified_questions)
-    unique_contexts = len(set(q['context'] for q in simplified_questions))
+    total_questions = len(full_questions)
+    mcq_count = sum(1 for q in full_questions if q['question_type'] == 'multiple_choice')
+    long_answer_count = total_questions - mcq_count
+    unique_contexts = len(set(q['context'] for q in full_questions))
     
-    print(f"✅ Created {total_questions} questions with {unique_contexts} unique contexts")
-    print(f"📋 Simplified format: question_id, text, context")
+    print(f"✅ Created {total_questions} questions ({mcq_count} MCQ, {long_answer_count} Long Answer)")
+    print(f"📋 Unique contexts: {unique_contexts}")
     
     return state
 
@@ -386,14 +427,17 @@ def store_in_redis(state: QPInputState) -> QPInputState:
     save as a json array of questions with their context
     """
     from redis import Redis
-    REDIS_URI = "redis://localhost:6379"
     qp_id = state.qp_id  # Use the qp_id from Next.js (meeting.id)
 
-    r = Redis(host="localhost", port=6379, decode_responses=True)
-    if not state.grouped_questions:
-        print("⚠️ No grouped questions to store in Redis")
-        return state    
+    # Use the imported REDIS_URI from environment (via exam_agent or os.getenv)
+    # Parse the URI to get host/port if needed, or use from_url
     try:
+        r = Redis.from_url(REDIS_URI, decode_responses=True)
+        
+        if not state.grouped_questions:
+            print("⚠️ No grouped questions to store in Redis")
+            return state    
+            
         r.json().set(f"qp:{qp_id}:questions", '$', state.grouped_questions)
         print(f"✅ Stored {len(state.grouped_questions)} questions in Redis under qp_id: {qp_id}")
     except Exception as e:
