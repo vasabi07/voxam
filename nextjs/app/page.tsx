@@ -41,13 +41,8 @@ export default function Home() {
 
           <div className="flex items-center gap-4">
             <Link href="/login">
-              <Button variant="ghost" size="sm" className="hidden sm:flex">
-                Login
-              </Button>
-            </Link>
-            <Link href="/login">
               <Button size="sm" className="rounded-full px-6">
-                Sign Up
+                Get Started
               </Button>
             </Link>
           </div>
@@ -61,7 +56,7 @@ export default function Home() {
           <div className="container mx-auto px-4 md:px-6 text-center">
             <Badge variant="secondary" className="mb-6 px-4 py-1.5 text-sm font-medium rounded-full border-primary/20 bg-primary/10 text-primary">
               <Sparkles className="mr-2 h-3.5 w-3.5" />
-              Now with GPT-4o Voice Integration
+              Intelligent. Instant. Interactive.
             </Badge>
 
             <h1 className="mx-auto max-w-4xl text-5xl font-extrabold tracking-tight sm:text-6xl md:text-7xl lg:text-8xl">
@@ -149,24 +144,22 @@ export default function Home() {
 
               {/* Card - Socratic Method */}
               <Card className="md:col-span-3 border-border/50 bg-background/50 backdrop-blur-sm hover:border-primary/50 transition-colors">
-                <div className="flex flex-col md:flex-row items-center text-center md:text-left">
-                  <CardHeader className="flex-1 flex flex-col items-center md:items-start px-4 sm:px-6">
-                    <div className="mb-2 w-10 h-10 rounded-lg bg-purple-500/10 flex items-center justify-center text-purple-500">
+                <CardHeader className="text-center md:text-left">
+                  <div className="flex justify-center md:justify-start mb-2">
+                    <div className="w-10 h-10 rounded-lg bg-purple-500/10 flex items-center justify-center text-purple-500">
                       <Brain className="h-5 w-5" />
                     </div>
-                    <CardTitle className="text-lg sm:text-xl">Socratic Questioning Engine</CardTitle>
-                    <CardDescription className="text-sm sm:text-base mt-2 max-w-md">
-                      Our AI probes deeper with &quot;Why?&quot; and &quot;How?&quot; questions, building critical thinking skills.
-                    </CardDescription>
-                  </CardHeader>
-                  <div className="px-4 pb-6 md:p-6 md:w-1/3 flex justify-center">
-                    <div className="flex flex-wrap justify-center gap-2">
-                      <Badge variant="secondary">Critical Thinking</Badge>
-                      <Badge variant="secondary">Analysis</Badge>
-                      <Badge variant="secondary">Synthesis</Badge>
-                    </div>
                   </div>
-                </div>
+                  <CardTitle>Socratic Questioning Engine</CardTitle>
+                  <CardDescription className="mt-2">
+                    Our AI probes deeper with &quot;Why?&quot; and &quot;How?&quot; questions, building critical thinking skills.
+                  </CardDescription>
+                  <div className="flex flex-wrap justify-center md:justify-start gap-2 pt-4">
+                    <Badge variant="secondary">Critical Thinking</Badge>
+                    <Badge variant="secondary">Analysis</Badge>
+                    <Badge variant="secondary">Synthesis</Badge>
+                  </div>
+                </CardHeader>
               </Card>
             </div>
           </div>
@@ -256,19 +249,19 @@ export default function Home() {
 
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 max-w-6xl mx-auto">
               {/* Free Plan */}
-              <Card className="border-border/50 bg-background/50 backdrop-blur-sm hover:shadow-lg transition-all">
+              <Card className="border-border/50 bg-background/50 backdrop-blur-sm hover:shadow-lg transition-all text-center sm:text-left">
                 <CardHeader>
                   <CardTitle>Free Trial</CardTitle>
-                  <div className="mt-4 flex items-baseline text-4xl font-extrabold tracking-tight">
+                  <div className="mt-4 flex items-baseline justify-center sm:justify-start text-4xl font-extrabold tracking-tight">
                     ₹0
                   </div>
                   <CardDescription className="mt-2">Try before you commit</CardDescription>
                 </CardHeader>
                 <CardContent>
                   <ul className="space-y-3 text-sm">
-                    <li className="flex items-center"><Check className="mr-2 h-4 w-4 text-primary" /> 30 mins voice exams</li>
-                    <li className="flex items-center"><Check className="mr-2 h-4 w-4 text-primary" /> 50 chat messages</li>
-                    <li className="flex items-center"><Check className="mr-2 h-4 w-4 text-primary" /> 10 document pages</li>
+                    <li className="flex items-center justify-center sm:justify-start"><Check className="mr-2 h-4 w-4 text-primary" /> 30 mins voice exams</li>
+                    <li className="flex items-center justify-center sm:justify-start"><Check className="mr-2 h-4 w-4 text-primary" /> 50 chat messages</li>
+                    <li className="flex items-center justify-center sm:justify-start"><Check className="mr-2 h-4 w-4 text-primary" /> 10 document pages</li>
                   </ul>
                   <Link href="/login" className="w-full">
                     <Button className="mt-8 w-full" variant="outline">Start Free</Button>
@@ -277,10 +270,10 @@ export default function Home() {
               </Card>
 
               {/* Starter Plan */}
-              <Card className="border-border/50 bg-background/50 backdrop-blur-sm hover:shadow-lg transition-all">
+              <Card className="border-border/50 bg-background/50 backdrop-blur-sm hover:shadow-lg transition-all text-center sm:text-left">
                 <CardHeader>
                   <CardTitle>Starter</CardTitle>
-                  <div className="mt-4 flex items-baseline text-4xl font-extrabold tracking-tight">
+                  <div className="mt-4 flex items-baseline justify-center sm:justify-start text-4xl font-extrabold tracking-tight">
                     ₹299
                     <span className="ml-1 text-lg font-medium text-muted-foreground">/mo</span>
                   </div>
@@ -288,10 +281,10 @@ export default function Home() {
                 </CardHeader>
                 <CardContent>
                   <ul className="space-y-3 text-sm">
-                    <li className="flex items-center"><Check className="mr-2 h-4 w-4 text-primary" /> 90 mins voice exams</li>
-                    <li className="flex items-center"><Check className="mr-2 h-4 w-4 text-primary" /> 200 chat messages</li>
-                    <li className="flex items-center"><Check className="mr-2 h-4 w-4 text-primary" /> 50 document pages</li>
-                    <li className="flex items-center"><Check className="mr-2 h-4 w-4 text-primary" /> 3 correction reports</li>
+                    <li className="flex items-center justify-center sm:justify-start"><Check className="mr-2 h-4 w-4 text-primary" /> 90 mins voice exams</li>
+                    <li className="flex items-center justify-center sm:justify-start"><Check className="mr-2 h-4 w-4 text-primary" /> 200 chat messages</li>
+                    <li className="flex items-center justify-center sm:justify-start"><Check className="mr-2 h-4 w-4 text-primary" /> 50 document pages</li>
+                    <li className="flex items-center justify-center sm:justify-start"><Check className="mr-2 h-4 w-4 text-primary" /> 3 correction reports</li>
                   </ul>
                   <Link href="/login" className="w-full">
                     <Button className="mt-8 w-full" variant="outline">Get Started</Button>
@@ -300,13 +293,13 @@ export default function Home() {
               </Card>
 
               {/* Pro Plan */}
-              <Card className="relative border-primary shadow-lg bg-background sm:scale-105 z-10">
+              <Card className="relative border-primary shadow-lg bg-background sm:scale-105 z-10 text-center sm:text-left">
                 <div className="absolute -top-4 left-0 right-0 flex justify-center">
                   <Badge className="bg-primary hover:bg-primary">Most Popular</Badge>
                 </div>
                 <CardHeader>
                   <CardTitle>Pro</CardTitle>
-                  <div className="mt-4 flex items-baseline text-4xl font-extrabold tracking-tight">
+                  <div className="mt-4 flex items-baseline justify-center sm:justify-start text-4xl font-extrabold tracking-tight">
                     ₹599
                     <span className="ml-1 text-lg font-medium text-muted-foreground">/mo</span>
                   </div>
@@ -314,10 +307,10 @@ export default function Home() {
                 </CardHeader>
                 <CardContent>
                   <ul className="space-y-3 text-sm">
-                    <li className="flex items-center"><Check className="mr-2 h-4 w-4 text-primary" /> 180 mins voice exams</li>
-                    <li className="flex items-center"><Check className="mr-2 h-4 w-4 text-primary" /> 500 chat messages</li>
-                    <li className="flex items-center"><Check className="mr-2 h-4 w-4 text-primary" /> 150 document pages</li>
-                    <li className="flex items-center"><Check className="mr-2 h-4 w-4 text-primary" /> 10 correction reports</li>
+                    <li className="flex items-center justify-center sm:justify-start"><Check className="mr-2 h-4 w-4 text-primary" /> 180 mins voice exams</li>
+                    <li className="flex items-center justify-center sm:justify-start"><Check className="mr-2 h-4 w-4 text-primary" /> 500 chat messages</li>
+                    <li className="flex items-center justify-center sm:justify-start"><Check className="mr-2 h-4 w-4 text-primary" /> 150 document pages</li>
+                    <li className="flex items-center justify-center sm:justify-start"><Check className="mr-2 h-4 w-4 text-primary" /> 10 correction reports</li>
                   </ul>
                   <Link href="/login" className="w-full">
                     <Button className="mt-8 w-full">Get Started</Button>
@@ -326,10 +319,10 @@ export default function Home() {
               </Card>
 
               {/* Unlimited Plan */}
-              <Card className="border-border/50 bg-background/50 backdrop-blur-sm hover:shadow-lg transition-all">
+              <Card className="border-border/50 bg-background/50 backdrop-blur-sm hover:shadow-lg transition-all text-center sm:text-left">
                 <CardHeader>
                   <CardTitle>Unlimited</CardTitle>
-                  <div className="mt-4 flex items-baseline text-4xl font-extrabold tracking-tight">
+                  <div className="mt-4 flex items-baseline justify-center sm:justify-start text-4xl font-extrabold tracking-tight">
                     ₹999
                     <span className="ml-1 text-lg font-medium text-muted-foreground">/mo</span>
                   </div>
@@ -337,10 +330,10 @@ export default function Home() {
                 </CardHeader>
                 <CardContent>
                   <ul className="space-y-3 text-sm">
-                    <li className="flex items-center"><Check className="mr-2 h-4 w-4 text-primary" /> 400 mins voice exams</li>
-                    <li className="flex items-center"><Check className="mr-2 h-4 w-4 text-primary" /> 2000 chat messages</li>
-                    <li className="flex items-center"><Check className="mr-2 h-4 w-4 text-primary" /> 300 document pages</li>
-                    <li className="flex items-center"><Check className="mr-2 h-4 w-4 text-primary" /> 30 correction reports</li>
+                    <li className="flex items-center justify-center sm:justify-start"><Check className="mr-2 h-4 w-4 text-primary" /> 400 mins voice exams</li>
+                    <li className="flex items-center justify-center sm:justify-start"><Check className="mr-2 h-4 w-4 text-primary" /> 2000 chat messages</li>
+                    <li className="flex items-center justify-center sm:justify-start"><Check className="mr-2 h-4 w-4 text-primary" /> 300 document pages</li>
+                    <li className="flex items-center justify-center sm:justify-start"><Check className="mr-2 h-4 w-4 text-primary" /> 30 correction reports</li>
                   </ul>
                   <Link href="/login" className="w-full">
                     <Button className="mt-8 w-full" variant="outline">Get Started</Button>
