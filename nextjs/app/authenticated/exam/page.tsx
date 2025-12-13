@@ -1,6 +1,6 @@
 "use client"
 
-import React, { useState, useEffect } from "react"
+import React, { useState, useEffect, Suspense } from "react"
 import { useSearchParams } from "next/navigation"
 import { LiveKitRoom, RoomAudioRenderer, useVoiceAssistant, useLocalParticipant, useRemoteParticipants, RoomContext } from "@livekit/components-react"
 import "@livekit/components-styles"
@@ -404,4 +404,15 @@ function ExamRoomContent({
   )
 }
 
-export default ExamPage
+// Wrapper component with Suspense for useSearchParams
+export default function ExamPageWrapper() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen flex items-center justify-center bg-background">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      </div>
+    }>
+      <ExamPage />
+    </Suspense>
+  )
+}
