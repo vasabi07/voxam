@@ -149,8 +149,8 @@ export default function Home() {
 
               {/* Card - Socratic Method */}
               <Card className="md:col-span-3 border-border/50 bg-background/50 backdrop-blur-sm hover:border-primary/50 transition-colors">
-                <div className="flex flex-col md:flex-row items-center">
-                  <CardHeader className="flex-1">
+                <div className="flex flex-col md:flex-row items-center text-center md:text-left">
+                  <CardHeader className="flex-1 flex flex-col items-center md:items-start">
                     <div className="mb-2 w-10 h-10 rounded-lg bg-purple-500/10 flex items-center justify-center text-purple-500">
                       <Brain className="h-5 w-5" />
                     </div>
@@ -160,7 +160,7 @@ export default function Home() {
                     </CardDescription>
                   </CardHeader>
                   <div className="p-6 md:w-1/3 flex justify-center">
-                    <div className="flex gap-2">
+                    <div className="flex flex-wrap justify-center gap-2">
                       <Badge variant="secondary">Critical Thinking</Badge>
                       <Badge variant="secondary">Analysis</Badge>
                       <Badge variant="secondary">Synthesis</Badge>
@@ -254,7 +254,7 @@ export default function Home() {
               <p className="mt-4 text-muted-foreground">Start for free, upgrade as you master your subjects.</p>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-6 max-w-6xl mx-auto">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 max-w-6xl mx-auto">
               {/* Free Plan */}
               <Card className="border-border/50 bg-background/50 backdrop-blur-sm hover:shadow-lg transition-all">
                 <CardHeader>
@@ -300,7 +300,7 @@ export default function Home() {
               </Card>
 
               {/* Pro Plan */}
-              <Card className="relative border-primary shadow-lg bg-background scale-105 z-10">
+              <Card className="relative border-primary shadow-lg bg-background sm:scale-105 z-10">
                 <div className="absolute -top-4 left-0 right-0 flex justify-center">
                   <Badge className="bg-primary hover:bg-primary">Most Popular</Badge>
                 </div>
