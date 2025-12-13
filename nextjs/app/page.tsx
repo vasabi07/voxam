@@ -157,7 +157,7 @@ export default function Home() {
                     </div>
                     <CardTitle>Socratic Questioning Engine</CardTitle>
                     <CardDescription className="text-base mt-2">
-                      Our AI doesn't just check answers. It asks "Why?" and "How?" to probe for deeper understanding, challenging assumptions and building critical thinking skills.
+                      Our AI doesn&apos;t just check answers. It asks &quot;Why?&quot; and &quot;How?&quot; to probe for deeper understanding, challenging assumptions and building critical thinking skills.
                     </CardDescription>
                   </CardHeader>
                   <div className="p-6 md:w-1/3 flex justify-center">
@@ -180,10 +180,10 @@ export default function Home() {
               <div>
                 <Badge variant="outline" className="mb-4 border-primary/50 text-primary">Pedagogy First</Badge>
                 <h2 className="text-3xl font-bold tracking-tighter sm:text-4xl mb-6">
-                  Built on Bloom's Taxonomy
+                  Built on Bloom&apos;s Taxonomy
                 </h2>
                 <p className="text-lg text-muted-foreground mb-8 leading-relaxed">
-                  We don't just ask you to remember facts. Our AI dynamically adjusts question complexity to traverse all six levels of cognitive learning, ensuring a comprehensive assessment of your mastery.
+                  We don&apos;t just ask you to remember facts. Our AI dynamically adjusts question complexity to traverse all six levels of cognitive learning, ensuring a comprehensive assessment of your mastery.
                 </p>
 
                 <div className="space-y-4">
