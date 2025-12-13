@@ -11,7 +11,6 @@ import {
   FileText,
   Brain,
   BarChart3,
-  Zap,
   GraduationCap,
   Check,
   ArrowRight,
