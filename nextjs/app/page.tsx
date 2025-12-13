@@ -150,16 +150,16 @@ export default function Home() {
               {/* Card - Socratic Method */}
               <Card className="md:col-span-3 border-border/50 bg-background/50 backdrop-blur-sm hover:border-primary/50 transition-colors">
                 <div className="flex flex-col md:flex-row items-center text-center md:text-left">
-                  <CardHeader className="flex-1 flex flex-col items-center md:items-start">
+                  <CardHeader className="flex-1 flex flex-col items-center md:items-start px-4 sm:px-6">
                     <div className="mb-2 w-10 h-10 rounded-lg bg-purple-500/10 flex items-center justify-center text-purple-500">
                       <Brain className="h-5 w-5" />
                     </div>
-                    <CardTitle>Socratic Questioning Engine</CardTitle>
-                    <CardDescription className="text-base mt-2">
-                      Our AI doesn&apos;t just check answers. It asks &quot;Why?&quot; and &quot;How?&quot; to probe for deeper understanding, challenging assumptions and building critical thinking skills.
+                    <CardTitle className="text-lg sm:text-xl">Socratic Questioning Engine</CardTitle>
+                    <CardDescription className="text-sm sm:text-base mt-2 max-w-md">
+                      Our AI probes deeper with &quot;Why?&quot; and &quot;How?&quot; questions, building critical thinking skills.
                     </CardDescription>
                   </CardHeader>
-                  <div className="p-6 md:w-1/3 flex justify-center">
+                  <div className="px-4 pb-6 md:p-6 md:w-1/3 flex justify-center">
                     <div className="flex flex-wrap justify-center gap-2">
                       <Badge variant="secondary">Critical Thinking</Badge>
                       <Badge variant="secondary">Analysis</Badge>
