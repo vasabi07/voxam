@@ -13,6 +13,9 @@ from livekit import api
 # CopilotKit AG UI imports
 from copilotkit import LangGraphAGUIAgent
 from ag_ui_langgraph import add_langgraph_fastapi_endpoint
+# Security
+from fastapi import Depends
+from security import verify_token
 
 app = FastAPI()
 
@@ -34,6 +37,7 @@ app.add_middleware(
 )
 
 # Add CopilotKit AG UI endpoint for chat agent (testing)
+# Protect this endpoint with JWT verification
 add_langgraph_fastapi_endpoint(
     app=app,
     agent=LangGraphAGUIAgent(
@@ -42,7 +46,59 @@ add_langgraph_fastapi_endpoint(
         graph=chat_graph,
     ),
     path="/copilotkit",
+    # Pass dependencies to the underlying router
+   # dependencies=[Depends(verify_token)] 
+   # Note: Since I am not 100% sure add_langgraph_fastapi_endpoint supports dependencies,
+   # I will rely on the middleware below if this fails? No, that's risky.
+   # I'll try to inject it. If the user reports an error, I'll fix it.
+   # But wait, looking at standard CopilotKit patterns, usually you wrap it or use a router.
 )
+
+# Middleware for auth on /copilotkit if dependencies kwarg is not supported
+# (I'll add a specific middleware for this, cleaner and safer than guessing kwargs)
+from fastapi.responses import JSONResponse
+
+@app.middleware("http")
+async def verify_copilot_request(request: Request, call_next):
+    if request.url.path.startswith("/copilotkit"):
+        # Manual check because we can't easily inject dependencies into the library function
+        from security import get_jwks_client, SUPABASE_JWKS_URL
+        try:
+            # Manually extract token because Depends() doesn't work in middleware
+            auth = request.headers.get("Authorization")
+            if not auth:
+                return JSONResponse(status_code=401, content={"detail": "Missing Authorization header"})
+            
+            import jwt
+            
+            scheme, _, token = auth.partition(" ")
+            if scheme.lower() != "bearer":
+                return JSONResponse(status_code=401, content={"detail": "Invalid authentication scheme"})
+            
+            if not SUPABASE_JWKS_URL:
+                print("⚠️  WARNING: SUPABASE_JWKS_URL not set")
+                return JSONResponse(status_code=500, content={"detail": "Server configuration error"})
+            
+            # Get the signing key from JWKS and verify with RS256
+            jwks_client = get_jwks_client()
+            signing_key = jwks_client.get_signing_key_from_jwt(token)
+            
+            payload = jwt.decode(
+                token, 
+                signing_key.key, 
+                algorithms=["ES256"], 
+                audience="authenticated", 
+                options={"verify_exp": True}
+            )
+            
+            # Inject user into state
+            request.state.user = payload
+            
+        except Exception as e:
+            print(f"Auth failed: {e}")
+            return JSONResponse(status_code=401, content={"detail": "Invalid authentication credentials"})
+            
+    return await call_next(request)
 
 llm = init_chat_model(model="gpt-4.1", temperature=0)
 

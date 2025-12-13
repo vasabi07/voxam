@@ -11,38 +11,39 @@ Flow:
 import re
 from typing import Optional, List
 from langgraph.graph import StateGraph, END
-from langgraph.graph.message import MessagesState
 from langchain_core.messages import HumanMessage, AIMessage, SystemMessage
 from langchain_openai import ChatOpenAI
 from langgraph.checkpoint.memory import MemorySaver
+from copilotkit import CopilotKitState
 
-# Import retrieval function from parent package
-from ..retrieval import retrieve_context
+# Import retrieval function
+from retrieval import retrieve_context
 
 
 # ============================================================
 # STATE DEFINITION
 # ============================================================
-class ChatState(MessagesState):
+class ChatState(CopilotKitState):
     """
-    Extended MessagesState with RAG-specific fields.
-    MessagesState automatically handles message history with add_messages reducer.
+    Extended CopilotKitState with RAG-specific fields.
+    CopilotKitState extends MessagesState and includes copilotkit context.
     """
     # RAG fields
     rewritten_query: Optional[str]       # Contextualized query (if rewritten)
     retrieved_context: Optional[str]     # Context from hybrid search
     citations: Optional[List[str]]       # Source citations [Doc:X page:Y]
     doc_id: Optional[str]                # Active document ID (for scoped retrieval)
+    user_id: Optional[str]               # User ID for document isolation
 
 
 # ============================================================
 # LLM INSTANCES
 # ============================================================
-# Fast model for query rewriting
+# Fast model for query rewriting (no streaming - internal use)
 rewriter_llm = ChatOpenAI(model="gpt-4o-mini", temperature=0)
 
-# Main model for generation
-generator_llm = ChatOpenAI(model="gpt-4o-mini", temperature=0.7)
+# Main model for generation (streaming enabled for better UX)
+generator_llm = ChatOpenAI(model="gpt-4o-mini", temperature=0.7, streaming=True)
 
 
 # ============================================================
@@ -133,6 +134,7 @@ INSTRUCTIONS:
 
 REWRITTEN QUERY:"""
     
+    # Run without config - CopilotKit won't intercept this as it's a "naked" sync call
     response = rewriter_llm.invoke([SystemMessage(content=rewrite_prompt)])
     rewritten = response.content.strip().strip('"')
     
@@ -157,10 +159,51 @@ def skip_rewriter_node(state: ChatState) -> dict:
 # ============================================================
 # NODE 2: RETRIEVER
 # ============================================================
+def get_user_context(state: ChatState) -> tuple[Optional[str], Optional[str]]:
+    """
+    Extracts user_id and doc_id from CopilotKit context.
+    Returns (user_id, doc_id) tuple.
+    """
+    copilotkit = state.get("copilotkit", {})
+    context_items = copilotkit.get("context", [])
+    
+    user_id = None
+    doc_id = None
+    
+    for item in context_items:
+        # Handle both dict and Pydantic Context objects
+        if hasattr(item, 'description'):
+            # Pydantic object
+            desc = item.description
+            value = item.value if hasattr(item, 'value') else {}
+        else:
+            # Dict fallback
+            desc = item.get("description", "")
+            value = item.get("value", {})
+        
+        # Handle value as dict or object
+        if hasattr(value, 'get'):
+            # It's a dict
+            value_dict = value
+        elif hasattr(value, '__dict__'):
+            # It's an object, convert to dict
+            value_dict = value.__dict__ if hasattr(value, '__dict__') else {}
+        else:
+            value_dict = {}
+        
+        if desc == "The current user's information":
+            user_id = value_dict.get("user_id") if isinstance(value_dict, dict) else getattr(value, 'user_id', None)
+        elif desc == "The current document context":
+            doc_id = value_dict.get("doc_id") if isinstance(value_dict, dict) else getattr(value, 'doc_id', None)
+    
+    return user_id, doc_id
+
+
 def retriever_node(state: ChatState) -> dict:
     """
     Retrieves relevant context using Hybrid Search.
     Uses rewritten_query if available, otherwise original query.
+    Filters by user_id for document isolation, optionally scoped to single doc.
     """
     # Get the query to search
     query = state.get("rewritten_query")
@@ -168,20 +211,29 @@ def retriever_node(state: ChatState) -> dict:
         messages = state.get("messages", [])
         query = messages[-1].content if messages else ""
     
-    # doc_id can be used for scoped retrieval in future
-    # doc_id = state.get("doc_id")
+    # Get user_id and doc_id from CopilotKit context
+    user_id, doc_id = get_user_context(state)
     
-    print(f"🔍 Retrieving context for: '{query}'")
+    # Fallback to state fields if copilotkit context not available
+    if not user_id:
+        user_id = state.get("user_id")
+    if not doc_id:
+        doc_id = state.get("doc_id")
+    
+    scope = f"doc:{doc_id}" if doc_id else "all docs"
+    print(f"🔍 Retrieving context for: '{query}' (user: {user_id or 'ALL'}, {scope})")
     
     # Call hybrid search with smart filtering:
-    # k=8: Fetch candidates for RRF ranking
+    # k=4: Fetch top candidates (chunks are title-based, fewer needed)
     # min_score=0.018: Only keep quality matches (RRF max ≈ 0.033)
-    # max_chars=12000: ~3000 tokens, leaves room for system prompt + history
+    # max_chars=20000: ~5000 tokens, generous room for multi-block context
     context = retrieve_context(
         query_text=query,
-        k=8,
+        user_id=user_id,  # Filter by user's documents only
+        doc_id=doc_id,    # Optional: scope to single document
+        k=4,
         min_score=0.018,
-        max_chars=12000
+        max_chars=20000
     )
     
     # Extract citations from context
@@ -304,8 +356,8 @@ def create_chat_graph():
     workflow.add_edge("retriever", "generator")
     workflow.add_edge("generator", END)
     
-    # Compile with memory checkpointer
-    # TODO: Replace with Redis checkpointer for production
+    # Compile with MemorySaver for now
+    # TODO: Switch to Redis for production persistence across restarts
     memory = MemorySaver()
     graph = workflow.compile(checkpointer=memory)
     

@@ -1,485 +1,407 @@
 "use client"
-import React, {useEffect,useRef,useState} from "react"
+
+import React, { useState, useEffect, useRef } from "react"
+import { useSearchParams } from "next/navigation"
+import { LiveKitRoom, RoomAudioRenderer, useVoiceAssistant, useLocalParticipant, useRemoteParticipants, RoomContext } from "@livekit/components-react"
+import "@livekit/components-styles"
+import { Room } from "livekit-client"
+import { v4 as uuidv4 } from "uuid"
+import { motion, AnimatePresence } from "motion/react"
 import { Orb } from "@/components/ui/orb"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { Mic, MicOff, AlertCircle } from "lucide-react"
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet"
+import { Progress } from "@/components/ui/progress"
+import { 
+    Mic, 
+    MicOff, 
+    PhoneOff, 
+    Menu, 
+    Timer, 
+    Maximize2, 
+    Minimize2,
+    MessageSquare,
+    Loader2
+} from "lucide-react"
 
-//start creating the webrtc connection here 
+interface ExamSessionResponse {
+  success: boolean
+  room_name: string
+  token: string
+  livekit_url: string
+  qp_id: string
+  thread_id: string
+  mode: string
+  message?: string
+  error?: string
+}
+
 const ExamPage = () => {
-    const websocketRef = useRef<WebSocket | null>(null);
-    const peerConnectionRef = useRef<RTCPeerConnection | null>(null);
-    const remoteAudioRef = useRef<HTMLAudioElement | null>(null);
-    const [isConnected, setIsConnected] = useState(false);
-    const [examMode, setExamMode] = useState<"exam" | "learn">("exam");
-    const [isMuted, setIsMuted] = useState(false);
-    const [examStarted, setExamStarted] = useState(false);
+  const [examStarted, setExamStarted] = useState(false)
+  const [sessionInfo, setSessionInfo] = useState<ExamSessionResponse | null>(null)
+  const [examMode, setExamMode] = useState<"exam" | "learn">("exam")
+  const [isLoading, setIsLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [isMounted, setIsMounted] = useState(false)
+  const searchParams = useSearchParams()
+
+  // Create room instance with optimizations
+  const [room] = useState(() => new Room({
+    adaptiveStream: true,
+    dynacast: true,
+  }))
+
+  // For demo purposes - in production these come from your app state
+  const qpId = "qp1" 
+  const [threadId] = useState(() => `session_${uuidv4()}`)
+
+  useEffect(() => {
+    setIsMounted(true)
     
-    // Helper function to add logs (console only, no UI display)
-    const addLog = React.useCallback((message: string) => {
-        const timestamp = new Date().toLocaleTimeString();
-        const logEntry = `[${timestamp}] ${message}`;
-        console.log(logEntry);
-    }, []);
+    const roomName = searchParams.get("room")
+    const token = searchParams.get("token")
+    const url = searchParams.get("url")
+    const qpIdParam = searchParams.get("qp_id")
+    const threadIdParam = searchParams.get("thread_id")
 
-    const startExam = async () => {
-        addLog("🚀 Starting exam and creating WebRTC connection...");
-        setExamStarted(true);
-        
-       peerConnectionRef.current = new RTCPeerConnection({
-            iceServers: [
-                { urls: 'stun:stun.l.google.com:19302' }
-            ]
-        });
-        addLog("✅ RTCPeerConnection created with STUN server");
-        
-        // Get user media (camera and microphone)   
-        addLog("🎤 Requesting user media with Deepgram-compatible audio format...");
-        
-        // Configure audio constraints for Deepgram compatibility
-        const audioConstraints = {
-            video: false,
-            audio: {
-                channelCount: 1,        // Mono audio
-                sampleRate: 16000,      // 16kHz sample rate (Deepgram standard)
-                sampleSize: 16,         // 16-bit samples
-                echoCancellation: true, // Enable echo cancellation
-                noiseSuppression: true, // Enable noise suppression
-                autoGainControl: true   // Enable automatic gain control
-            }
-        };
-        
-        addLog(`🔧 Audio constraints: ${JSON.stringify(audioConstraints.audio)}`);
-        
-        const stream = await navigator.mediaDevices.getUserMedia(audioConstraints);
-        addLog("✅ User media obtained with optimized audio format");
-        
-        // Log the actual audio track settings
-        const audioTrack = stream.getAudioTracks()[0];
-        if (audioTrack) {
-            const settings = audioTrack.getSettings();
-            addLog(`📊 Actual audio track settings: ${JSON.stringify(settings)}`);
-        }
-        
-        stream.getTracks().forEach(track => {
-            peerConnectionRef.current?.addTrack(track, stream);
-            addLog(`📡 Added ${track.kind} track to peer connection`);
-        });
-        
-        // Create offer
-        addLog("📝 Creating WebRTC offer...");
-        const offer = await peerConnectionRef.current.createOffer();
-        await peerConnectionRef.current.setLocalDescription(offer);
-        addLog("✅ Local description set with offer");
-
-        // Set up ICE candidate handler
-        peerConnectionRef.current.onicecandidate = (event) => {
-            if (event.candidate && websocketRef.current) {
-                addLog(`🧊 Sending ICE candidate to server: ${event.candidate.candidate.substring(0, 50)}...`);
-                websocketRef.current.send(JSON.stringify({
-                    type: 'ice-candidate',
-                    candidate: event.candidate
-                }));
-            } else if (!event.candidate) {
-                addLog("🏁 ICE gathering complete (no more candidates)");
-            }
-        };
-
-        // Monitor connection state
-        peerConnectionRef.current.onconnectionstatechange = () => {
-            const state = peerConnectionRef.current?.connectionState;
-            addLog(`🔗 WebRTC connection state changed: ${state}`);
-        };
-
-        // Monitor ICE connection state
-        peerConnectionRef.current.oniceconnectionstatechange = () => {
-            const iceState = peerConnectionRef.current?.iceConnectionState;
-            addLog(`🧊 ICE connection state: ${iceState}`);
-        };
-
-        // Monitor ICE gathering state
-        peerConnectionRef.current.onicegatheringstatechange = () => {
-            const gatheringState = peerConnectionRef.current?.iceGatheringState;
-            addLog(`📡 ICE gathering state: ${gatheringState}`);
-        };
-
-        // Handle incoming audio tracks (TTS from server) - WebRTC native way
-        peerConnectionRef.current.ontrack = (event) => {
-            addLog(`🎵 Received remote ${event.track.kind} track from server`);
-            
-            if (event.track.kind === 'audio') {
-                addLog(`📊 Audio track details: enabled=${event.track.enabled}, muted=${event.track.muted}, readyState=${event.track.readyState}`);
-                
-                // Reuse or create audio element for TTS playback
-                if (!remoteAudioRef.current) {
-                    addLog('🔧 Creating new Audio element for WebRTC stream');
-                    remoteAudioRef.current = new Audio();
-                    remoteAudioRef.current.autoplay = true;
-                    remoteAudioRef.current.volume = 1.0;
-                    
-                    // Add event listeners for debugging
-                    remoteAudioRef.current.onloadedmetadata = () => {
-                        addLog('📊 Audio metadata loaded');
-                    };
-                    
-                    remoteAudioRef.current.oncanplay = () => {
-                        addLog('✅ Audio can play');
-                    };
-                    
-                    remoteAudioRef.current.onplaying = () => {
-                        addLog('🔊 Audio is actively playing');
-                    };
-                    
-                    remoteAudioRef.current.onpause = () => {
-                        addLog('⏸️ Audio paused');
-                    };
-                    
-                    remoteAudioRef.current.onerror = (e) => {
-                        addLog(`❌ Audio error: ${JSON.stringify(e)}`);
-                        console.error('Audio element error:', e);
-                    };
-                    
-                    remoteAudioRef.current.onstalled = () => {
-                        addLog('⚠️ Audio stalled');
-                    };
-                    
-                    remoteAudioRef.current.onwaiting = () => {
-                        addLog('⏳ Audio waiting for data');
-                    };
-                }
-                
-                // Set the remote stream
-                const stream = event.streams[0];
-                addLog(`🌊 Setting srcObject with stream (${stream.getAudioTracks().length} audio tracks)`);
-                remoteAudioRef.current.srcObject = stream;
-                
-                // Explicitly call play() to handle autoplay restrictions
-                const playPromise = remoteAudioRef.current.play();
-                if (playPromise !== undefined) {
-                    playPromise
-                        .then(() => {
-                            addLog('✅ Audio playback started successfully');
-                        })
-                        .catch(err => {
-                            addLog(`❌ Autoplay failed: ${err.name} - ${err.message}`);
-                            addLog('💡 Tip: User interaction may be required. Try clicking the start button.');
-                        });
-                }
-                
-                // Notify server that audio track is ready
-                if (websocketRef.current && websocketRef.current.readyState === WebSocket.OPEN) {
-                    websocketRef.current.send(JSON.stringify({
-                        type: 'track_ready',
-                        message: 'Audio track is ready to receive'
-                    }));
-                    addLog('📤 Sent track_ready message to server');
-                }
-            }
-        };
-
-        // Send offer through WebSocket
-        addLog("📤 Sending offer to server via WebSocket...");
-        websocketRef.current?.send(JSON.stringify({
-            type: 'offer',
-            offer: offer,
-            // Exam session details (will come from props/URL params in production)
-            thread_id: 'test_thread_' + Date.now(),  // TODO: Get from exam session
-            qp_id: 'qp1',  // TODO: Get from exam creation
-            user_id: 'test_user_123',  // TODO: Get from auth
-            mode: examMode  // Send selected mode
-        }));
-        addLog(`✅ Offer sent to server with exam session info (Mode: ${examMode.toUpperCase()})`);
+    if (roomName && token && url) {
+      setSessionInfo({
+        success: true,
+        room_name: roomName,
+        token: token,
+        livekit_url: url,
+        qp_id: qpIdParam || "unknown",
+        thread_id: threadIdParam || "unknown",
+        mode: "exam"
+      })
+      setExamStarted(true)
     }
+  }, [searchParams])
 
-    useEffect(() => {
-        // Initialize WebSocket connection
-        addLog("🔌 Initializing WebSocket connection to ws://localhost:8000/ws");
-        websocketRef.current = new WebSocket('ws://localhost:8000/ws');
-        
-        websocketRef.current.onopen = () => {
-            addLog("✅ WebSocket connection opened");
-            setIsConnected(true);
-        };
-        
-        websocketRef.current.onmessage = async (event) => {
-            const data = JSON.parse(event.data);
-            addLog(`📨 Received WebSocket message: ${data.type}`);
-            
-            // Handle different message types
-            if (data.type === 'answer') {
-                addLog('📝 Processing WebRTC answer from server...');
-                if (peerConnectionRef.current) {
-                    const answer = new RTCSessionDescription(data.answer);
-                    await peerConnectionRef.current.setRemoteDescription(answer);
-                    addLog('✅ Answer set as remote description');
-                } else {
-                    addLog('❌ No peer connection available for answer');
-                }
-            } else if (data.type === 'ice-candidate') {
-                addLog(`🧊 Processing ICE candidate from server: ${data.candidate?.candidate?.substring(0, 50)}...`);
-                if (peerConnectionRef.current && data.candidate) {
-                    await peerConnectionRef.current.addIceCandidate(new RTCIceCandidate(data.candidate));
-                    addLog('✅ Server ICE candidate added to peer connection');
-                } else {
-                    addLog('❌ Cannot add ICE candidate - missing peer connection or candidate data');
-                }
-            } else if (data.type === 'audio_start') {
-                // Agent started speaking
-                addLog('🗣️ Agent started speaking');
-            } else if (data.type === 'audio_complete') {
-                // Agent finished speaking
-                addLog('✅ Agent finished speaking');
-            } else {
-                // Log any other message types for debugging
-                addLog(`📨 Message type: ${data.type}`);
-            }
-        };
-        
-        websocketRef.current.onerror = (error) => {
-            addLog(`❌ WebSocket error: ${error}`);
-        };
-        
-        websocketRef.current.onclose = (event) => {
-            addLog(`🔌 WebSocket connection closed (code: ${event.code}, reason: ${event.reason})`);
-            setIsConnected(false);
-        };
+  if (!isMounted) return null
 
-        return () => {
-            // Cleanup on component unmount
-            addLog("🧹 Cleaning up connections...");
-            websocketRef.current?.close();
-            peerConnectionRef.current?.close();
-            if (remoteAudioRef.current) {
-                remoteAudioRef.current.srcObject = null;
-            }
-        };
-    }, [addLog]);
+  const startExam = async () => {
+    setIsLoading(true)
+    setError(null)
 
-    return (
-        <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-900 dark:to-slate-800">
-            <div className="container mx-auto px-4 py-8 max-w-6xl">
-                {/* Header */}
-                <div className="mb-8 text-center">
-                    <h1 className="text-4xl font-bold mb-2 bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
-                        VOXAM
-                    </h1>
-                    <p className="text-slate-600 dark:text-slate-400">
-                        {examMode === "exam" ? "Formal Examination Mode" : "Interactive Learning Mode"}
-                    </p>
-                </div>
+    try {
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"
+      const response = await fetch(`${apiUrl}/start-exam-session`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          qp_id: qpId,
+          thread_id: threadId,
+          mode: examMode,
+        }),
+      })
 
-                <div className="grid lg:grid-cols-2 gap-8">
-                    {/* Left Column - Voice Interface */}
-                    <Card className="border-2">
-                        <CardHeader>
-                            <CardTitle className="flex items-center justify-between">
-                                <span>Voice Assistant</span>
-                                <div className="flex gap-2">
-                                    {isConnected ? (
-                                        <Badge variant="default" className="bg-green-500">
-                                            <span className="w-2 h-2 bg-white rounded-full mr-2 animate-pulse" />
-                                            Connected
-                                        </Badge>
-                                    ) : (
-                                        <Badge variant="secondary">
-                                            <AlertCircle className="w-3 h-3 mr-1" />
-                                            Not Connected
-                                        </Badge>
-                                    )}
-                                </div>
-                            </CardTitle>
-                            <CardDescription>
-                                {!examStarted ? "Start your exam to begin voice interaction" : "Speak your answers clearly"}
-                            </CardDescription>
-                        </CardHeader>
-                        <CardContent>
-                            {/* Orb Visualizer */}
-                            <div className="relative w-full aspect-square max-w-md mx-auto mb-6">
-                                <Orb
-                                    colors={
-                                        examMode === "exam" 
-                                            ? ["#3B82F6", "#1E40AF"] // Blue for exam mode
-                                            : ["#10B981", "#059669"] // Green for learn mode
-                                    }
-                                    agentState={examStarted ? "listening" : null}
-                                    className="w-full h-full"
-                                />
-                                
-                                {/* Status overlay - Minimal, no text labels */}
-                                <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                                    {!examStarted && (
-                                        <div className="text-slate-400 text-sm">
-                                            Ready to start
-                                        </div>
-                                    )}
-                                </div>
+      const data: ExamSessionResponse = await response.json()
+
+      if (!data.success) {
+        throw new Error(data.error || "Failed to start exam session")
+      }
+
+      setSessionInfo(data)
+      setExamStarted(true)
+    } catch (err) {
+      console.error("❌ Error starting exam:", err)
+      setError(err instanceof Error ? err.message : "Failed to start exam")
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  const endExam = () => {
+    setExamStarted(false)
+    setSessionInfo(null)
+    room.disconnect()
+  }
+
+  return (
+    <div className="relative flex h-screen w-full flex-col overflow-hidden bg-background text-foreground font-sans selection:bg-primary/20">
+      {/* Background Gradient */}
+      <div className="absolute inset-0 -z-10 bg-[radial-gradient(ellipse_at_top,var(--tw-gradient-stops))] from-primary/20 via-background to-background opacity-40"></div>
+
+      {!examStarted ? (
+        // Initial State UI
+        <div className="flex-1 relative flex items-center justify-center p-4 md:p-8">
+           <div className="w-full max-w-6xl h-full flex items-center justify-center gap-6">
+             <motion.div layout className="relative flex items-center justify-center w-full h-full">
+                <div className="relative aspect-square w-72 md:w-96">
+                    <Orb 
+                        colors={examMode === "exam" ? ["#3B82F6", "#1E40AF"] : ["#10B981", "#059669"]}
+                        agentState="listening"
+                        className="w-full h-full opacity-50"
+                    />
+                    <div className="absolute inset-0 flex flex-col items-center justify-center gap-6">
+                        <div className="text-center space-y-2">
+                            <h1 className="text-4xl font-bold tracking-tight">VoiceExam AI</h1>
+                            <p className="text-muted-foreground">
+                                {examMode === "exam" ? "Strict Exam Mode" : "Interactive Learning Mode"}
+                            </p>
+                        </div>
+
+                        {error && (
+                            <div className="bg-destructive/10 text-destructive px-4 py-2 rounded-md text-sm">
+                                {error}
+                            </div>
+                        )}
+
+                        <div className="flex flex-col gap-4 items-center">
+                            <div className="flex items-center gap-2 bg-background/50 p-1 rounded-full border">
+                                <Button 
+                                    variant={examMode === "exam" ? "default" : "ghost"} 
+                                    onClick={() => setExamMode("exam")}
+                                    className="rounded-full"
+                                    size="sm"
+                                >
+                                    Exam Mode
+                                </Button>
+                                <Button 
+                                    variant={examMode === "learn" ? "default" : "ghost"} 
+                                    onClick={() => setExamMode("learn")}
+                                    className="rounded-full"
+                                    size="sm"
+                                >
+                                    Learn Mode
+                                </Button>
                             </div>
 
-                            {/* Controls */}
-                            <div className="flex flex-col gap-3">
-                                {!examStarted ? (
+                            <Button 
+                                onClick={startExam} 
+                                size="lg" 
+                                disabled={isLoading}
+                                className="rounded-full px-8 shadow-lg shadow-primary/20 h-14 text-lg"
+                            >
+                                {isLoading ? (
                                     <>
-                                        {/* Mode Selection */}
-                                        <div className="p-4 bg-slate-50 dark:bg-slate-800 rounded-lg border">
-                                            <label className="block text-sm font-semibold mb-2">
-                                                Select Exam Mode:
-                                            </label>
-                                            <select 
-                                                value={examMode} 
-                                                onChange={(e) => setExamMode(e.target.value as "exam" | "learn")}
-                                                className="w-full p-2 border border-slate-300 rounded-md bg-white dark:bg-slate-900"
-                                                disabled={isConnected && examStarted}
-                                            >
-                                                <option value="exam">
-                                                    📋 Exam Mode - Formal assessment
-                                                </option>
-                                                <option value="learn">
-                                                    📚 Learn Mode - Interactive learning
-                                                </option>
-                                            </select>
-                                        </div>
-
-                                        {/* Start Button */}
-                                        <Button 
-                                            onClick={startExam}
-                                            disabled={!isConnected}
-                                            size="lg"
-                                            className="w-full"
-                                        >
-                                            {isConnected ? "Start Exam" : "Connecting..."}
-                                        </Button>
+                                        <Loader2 className="mr-2 h-5 w-5 animate-spin" />
+                                        Connecting...
                                     </>
                                 ) : (
-                                    <div className="space-y-3">
-                                        {/* Status Info */}
-                                        <div className="p-4 rounded-lg border-2 text-center bg-slate-50 border-slate-300 dark:bg-slate-800 dark:border-slate-700">
-                                            <div>
-                                                <Mic className="w-6 h-6 mx-auto mb-1 text-slate-600 dark:text-slate-400" />
-                                                <p className="text-sm font-semibold text-slate-700 dark:text-slate-300">
-                                                    Exam in Progress
-                                                </p>
-                                                <p className="text-xs text-slate-600 dark:text-slate-400 mt-1">
-                                                    Voice conversation active
-                                                </p>
-                                            </div>
-                                        </div>
-
-                                        {/* Mute Button */}
-                                        <Button
-                                            onClick={() => setIsMuted(!isMuted)}
-                                            variant="outline"
-                                            className="w-full"
-                                        >
-                                            {isMuted ? (
-                                                <>
-                                                    <MicOff className="w-4 h-4 mr-2" />
-                                                    Unmute Microphone
-                                                </>
-                                            ) : (
-                                                <>
-                                                    <Mic className="w-4 h-4 mr-2" />
-                                                    Mute Microphone
-                                                </>
-                                            )}
-                                        </Button>
-                                    </div>
+                                    "Start Session"
                                 )}
+                            </Button>
+                        </div>
+                    </div>
+                </div>
+             </motion.div>
+           </div>
+        </div>
+      ) : (
+        // Active Exam Room
+        sessionInfo && (
+            <RoomContext.Provider value={room}>
+              <LiveKitRoom
+                serverUrl={sessionInfo.livekit_url}
+                token={sessionInfo.token}
+                connect={true}
+                audio={true}
+                video={false}
+                onDisconnected={endExam}
+                className="flex-1 flex flex-col h-full"
+              >
+                <ExamRoomContent
+                  examMode={examMode}
+                  onEndExam={endExam}
+                />
+                <RoomAudioRenderer />
+              </LiveKitRoom>
+            </RoomContext.Provider>
+        )
+      )}
+    </div>
+  )
+}
+
+function ExamRoomContent({
+  examMode,
+  onEndExam,
+}: {
+  examMode: "exam" | "learn"
+  onEndExam: () => void
+}) {
+  const [showContextPanel, setShowContextPanel] = useState(true)
+  const { state } = useVoiceAssistant()
+  const { localParticipant } = useLocalParticipant()
+  const [isMuted, setIsMuted] = useState(false)
+  const remoteParticipants = useRemoteParticipants()
+  const [agentConnected, setAgentConnected] = useState(false)
+
+  useEffect(() => {
+    if (remoteParticipants.length > 0) {
+      setAgentConnected(true)
+    } else {
+      setAgentConnected(false)
+    }
+  }, [remoteParticipants])
+
+  const toggleMute = async () => {
+    if (localParticipant) {
+      const newMutedState = !isMuted
+      await localParticipant.setMicrophoneEnabled(!newMutedState)
+      setIsMuted(newMutedState)
+    }
+  }
+
+  // Map LiveKit state to Orb state
+  const getOrbState = () => {
+    if (state === "speaking") return "talking"
+    return "listening"
+  }
+
+  return (
+    <>
+      {/* Top Bar */}
+      <header className="absolute top-0 left-0 right-0 z-50 flex items-center justify-between px-6 py-4">
+        <div className="flex items-center gap-2">
+            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-primary-foreground">
+                <Mic className="h-5 w-5" />
+            </div>
+            <span className="text-lg font-bold tracking-tight">VoiceExam AI</span>
+        </div>
+        
+        <div className="flex items-center gap-2">
+            <Badge variant={agentConnected ? "default" : "secondary"} className="transition-colors">
+                {agentConnected ? "Agent Connected" : "Connecting..."}
+            </Badge>
+            
+            <Sheet>
+                <SheetTrigger asChild>
+                    <Button variant="ghost" size="icon" className="rounded-full">
+                        <Menu className="h-5 w-5" />
+                    </Button>
+                </SheetTrigger>
+                <SheetContent>
+                    <SheetHeader>
+                        <SheetTitle>Exam Controls</SheetTitle>
+                    </SheetHeader>
+                    <div className="mt-6 space-y-6">
+                        <div className="space-y-2">
+                            <div className="flex justify-between text-sm">
+                                <span className="text-muted-foreground">Progress</span>
+                                <span className="font-medium">0 / 10</span>
                             </div>
-                        </CardContent>
-                    </Card>
+                            <Progress value={0} className="h-2" />
+                        </div>
+                        
+                        <div className="space-y-2">
+                            <div className="flex justify-between text-sm">
+                                <span className="text-muted-foreground">Time Remaining</span>
+                                <span className="font-medium font-mono">45:00</span>
+                            </div>
+                            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                                <Timer className="h-4 w-4" />
+                                <span>Standard Time</span>
+                            </div>
+                        </div>
 
-                    {/* Right Column - Exam Info */}
-                    <div className="space-y-6">
-                        {/* Current Question Card */}
-                        <Card className="border-2">
-                            <CardHeader>
-                                <CardTitle>Current Question</CardTitle>
-                                <CardDescription>
-                                    Listen carefully and answer when ready
-                                </CardDescription>
+                        <div className="space-y-2">
+                            <label className="text-sm font-medium">Mode</label>
+                            <div className="p-2 rounded-md border bg-muted/50 text-sm">
+                                {examMode === "exam" ? "Formal Exam" : "Interactive Learn"}
+                            </div>
+                        </div>
+                    </div>
+                </SheetContent>
+            </Sheet>
+        </div>
+      </header>
+
+      {/* Main Stage */}
+      <main className="flex-1 relative flex items-center justify-center p-4 md:p-8">
+        <div className="w-full max-w-6xl h-full flex items-center justify-center gap-6 transition-all duration-500">
+            {/* Avatar / Orb Section */}
+            <motion.div 
+                layout
+                className={`relative flex items-center justify-center transition-all duration-500 ${showContextPanel ? 'w-full md:w-1/2 h-[40vh] md:h-auto' : 'w-full h-full'}`}
+            >
+                <div className={`relative aspect-square transition-all duration-500 ${showContextPanel ? 'w-64 md:w-80' : 'w-72 md:w-96'}`}>
+                    <Orb 
+                        colors={examMode === "exam" ? ["#3B82F6", "#1E40AF"] : ["#10B981", "#059669"]}
+                        agentState={getOrbState()}  
+                        className="w-full h-full"
+                    />
+                </div>
+            </motion.div>
+
+            {/* Context Panel (Text Display) */}
+            <AnimatePresence mode="wait">
+                {showContextPanel && (
+                    <motion.div 
+                        initial={{ opacity: 0, x: 50, width: 0 }}
+                        animate={{ opacity: 1, x: 0, width: "50%" }}
+                        exit={{ opacity: 0, x: 50, width: 0 }}
+                        className="hidden md:block h-full max-h-[600px]"
+                    >
+                        <Card className="h-full border-border/50 bg-background/50 backdrop-blur-sm shadow-xl overflow-hidden flex flex-col">
+                            <CardHeader className="border-b border-border/40 bg-muted/20">
+                                <CardTitle className="flex items-center gap-2 text-base">
+                                    <MessageSquare className="h-4 w-4 text-primary" />
+                                    Current Question
+                                </CardTitle>
                             </CardHeader>
-                            <CardContent>
-                                {!examStarted ? (
-                                    <div className="text-center py-12 text-slate-400">
-                                        <AlertCircle className="w-12 h-12 mx-auto mb-3 opacity-50" />
-                                        <p>Questions will appear here once you start the exam</p>
+                            <CardContent className="flex-1 overflow-y-auto p-6 space-y-6">
+                                <div className="space-y-4">
+                                    <div className="p-4 rounded-lg bg-primary/5 border border-primary/10">
+                                        <h3 className="font-semibold text-lg mb-2">Question 1</h3>
+                                        <p className="text-muted-foreground leading-relaxed">
+                                            Explain the concept of "Closure" in JavaScript. How does it relate to variable scope and memory management? Provide a practical example of where you might use it.
+                                        </p>
                                     </div>
-                                ) : (
-                                    <div className="space-y-4">
-                                        <div className="p-4 bg-blue-50 dark:bg-blue-900/20 rounded-lg border border-blue-200 dark:border-blue-800">
-                                            <p className="text-sm text-slate-600 dark:text-slate-400 mb-2">
-                                                Question #1
-                                            </p>
-                                            <p className="text-lg font-medium">
-                                                {/* Question will be populated via data channel */}
-                                                Listen to the voice assistant for your question...
-                                            </p>
+                                    
+                                    <div className="space-y-2">
+                                        <h4 className="text-sm font-medium text-muted-foreground">Key Concepts to Cover:</h4>
+                                        <div className="flex flex-wrap gap-2">
+                                            <Badge variant="secondary">Lexical Scope</Badge>
+                                            <Badge variant="secondary">Garbage Collection</Badge>
+                                            <Badge variant="secondary">Data Privacy</Badge>
                                         </div>
-
-                                        <div className="text-sm text-slate-600 dark:text-slate-400">
-                                            <p>💡 Tip: Speak clearly and wait for the agent to finish before responding</p>
-                                        </div>
-                                    </div>
-                                )}
-                            </CardContent>
-                        </Card>
-
-                        {/* Exam Progress */}
-                        <Card>
-                            <CardHeader>
-                                <CardTitle className="text-base">Exam Progress</CardTitle>
-                            </CardHeader>
-                            <CardContent>
-                                <div className="space-y-3">
-                                    <div className="flex justify-between text-sm">
-                                        <span className="text-slate-600">Questions Answered</span>
-                                        <span className="font-semibold">0 / 10</span>
-                                    </div>
-                                    <div className="w-full bg-slate-200 dark:bg-slate-700 rounded-full h-2">
-                                        <div className="bg-blue-600 h-2 rounded-full" style={{width: '0%'}} />
-                                    </div>
-                                    <div className="flex justify-between text-sm">
-                                        <span className="text-slate-600">Time Remaining</span>
-                                        <span className="font-semibold">60:00</span>
                                     </div>
                                 </div>
                             </CardContent>
                         </Card>
-
-                        {/* Instructions */}
-                        <Card className="border-amber-200 bg-amber-50 dark:bg-amber-900/20 dark:border-amber-800">
-                            <CardHeader>
-                                <CardTitle className="text-base flex items-center gap-2">
-                                    <AlertCircle className="w-4 h-4" />
-                                    Instructions
-                                </CardTitle>
-                            </CardHeader>
-                            <CardContent>
-                                <ul className="space-y-2 text-sm text-slate-700 dark:text-slate-300">
-                                    {examMode === "exam" ? (
-                                        <>
-                                            <li>• Answer all questions to the best of your ability</li>
-                                            <li>• No hints or help will be provided during the exam</li>
-                                            <li>• Click &quot;Submit Answer&quot; when you finish each question</li>
-                                            <li>• You cannot return to previous questions</li>
-                                        </>
-                                    ) : (
-                                        <>
-                                            <li>• Feel free to ask for hints or clarifications</li>
-                                            <li>• The assistant will provide guidance and feedback</li>
-                                            <li>• Take your time to understand each concept</li>
-                                            <li>• Learning is the goal, not speed</li>
-                                        </>
-                                    )}
-                                </ul>
-                            </CardContent>
-                        </Card>
-                    </div>
-                </div>
-            </div>
+                    </motion.div>
+                )}
+            </AnimatePresence>
         </div>
-    )
+      </main>
+
+      {/* Floating Control Bar */}
+      <div className="absolute bottom-8 left-1/2 -translate-x-1/2 z-50">
+        <div className="flex items-center gap-4 p-2 rounded-full bg-background/80 backdrop-blur-md border border-border/40 shadow-2xl">
+            <Button 
+                variant={isMuted ? "destructive" : "secondary"} 
+                size="icon" 
+                className="h-12 w-12 rounded-full"
+                onClick={toggleMute}
+            >
+                {isMuted ? <MicOff className="h-5 w-5" /> : <Mic className="h-5 w-5" />}
+            </Button>
+            
+            <Button 
+                variant="destructive" 
+                size="icon" 
+                className="h-14 w-14 rounded-full shadow-lg shadow-destructive/20"
+                onClick={onEndExam}
+            >
+                <PhoneOff className="h-6 w-6" />
+            </Button>
+
+            <Button 
+                variant="outline" 
+                size="icon" 
+                className="h-12 w-12 rounded-full"
+                onClick={() => setShowContextPanel(!showContextPanel)}
+            >
+                {showContextPanel ? <Minimize2 className="h-5 w-5" /> : <Maximize2 className="h-5 w-5" />}
+            </Button>
+        </div>
+      </div>
+    </>
+  )
 }
 
 export default ExamPage

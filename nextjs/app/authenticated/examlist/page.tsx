@@ -183,7 +183,14 @@ export default function ExamListPage() {
       
       // Close dialog and redirect to exam page
       setOpen(false)
-      window.location.href = `/authenticated/exam?room=${sessionData.room_name}&token=${sessionData.token}`
+      const params = new URLSearchParams({
+        room: sessionData.room_name,
+        token: sessionData.token,
+        url: sessionData.livekit_url,
+        qp_id: qpId,
+        thread_id: meeting.threadId
+      })
+      window.location.href = `/authenticated/exam?${params.toString()}`
 
     } catch (error) {
       console.error('Error creating exam:', error)

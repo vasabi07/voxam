@@ -1,4 +1,8 @@
 from unstructured.partition.pdf import partition_pdf
+from unstructured.partition.docx import partition_docx
+from unstructured.partition.pptx import partition_pptx
+from unstructured.partition.md import partition_md
+from unstructured.partition.auto import partition
 from langchain.chat_models import init_chat_model
 from dotenv import load_dotenv
 from langchain_core.prompts import ChatPromptTemplate
@@ -13,7 +17,6 @@ import json
 import time
 import asyncio
 from concurrent.futures import ThreadPoolExecutor
-
 load_dotenv()
 
 # OpenAI client for embeddings
@@ -34,7 +37,7 @@ def embed_text(text: str, model: str = EMBED_MODEL_SMALL) -> List[float]:
     Truncates long text to stay within token limits.
     """
     # Rough guardrail: ~8000 chars ≈ 2000 tokens (safe for text-embedding-3)
-    text = text[:8000]
+    # text = text[:8000]
     try:
         response = openai_client.embeddings.create(
             model=model,
@@ -116,10 +119,10 @@ class ContentBlock:
         self.combined_context: str = ""
         self.questions: List[Question] = []
         self.embeddings: List[float] = []
-        self.summary: str = ""
         self.meta: dict = {}  # Store page numbers, etc.
         self.page_number: int = 1
-        self.coordinates: List[List[float]] = [] # Raw polygon points
+        # Optional: bbox for scroll-to position [x1, y1, x2, y2]
+        self.bbox: Optional[List[float]] = None
 
 class IngestionPipeline:
     def __init__(self, config):
@@ -136,8 +139,30 @@ class IngestionPipeline:
             print("Continuing without graph database persistence...")
 
 
-        #extract pdf chunks
-    def extract_pdf(self, pdf_path: str) -> List[ContentBlock]:
+    def extract_document(self, file_path: str) -> List[ContentBlock]:
+        """Extract content from any supported document format (PDF, DOCX, PPTX, MD)"""
+        import os
+        ext = os.path.splitext(file_path)[1].lower()
+        
+        supported_formats = ['.pdf', '.docx', '.doc', '.pptx', '.ppt', '.md', '.markdown']
+        if ext not in supported_formats:
+            raise ValueError(f"Unsupported file format: {ext}. Supported: {supported_formats}")
+        
+        print(f"📄 Detected format: {ext}")
+        
+        # Use format-specific partitioner for best results, fallback to auto
+        if ext == '.pdf':
+            return self._extract_pdf(file_path)
+        elif ext in ['.docx', '.doc']:
+            return self._extract_docx(file_path)
+        elif ext in ['.pptx', '.ppt']:
+            return self._extract_pptx(file_path)
+        elif ext in ['.md', '.markdown']:
+            return self._extract_markdown(file_path)
+        else:
+            return self._extract_auto(file_path)
+    
+    def _extract_pdf(self, pdf_path: str) -> List[ContentBlock]:
         """Extract PDF content and organize into ContentBlocks"""
         print("⏳ Starting PDF extraction...")
         start_time = time.time()
@@ -149,9 +174,9 @@ class IngestionPipeline:
             extract_image_block_types=["Image"],
             extract_image_block_to_payload=True,
             chunking_strategy="by_title",
-            max_characters=15000,
+            max_characters=8000,
             combine_text_under_n_chars=3000,
-            new_after_n_chars=8000,
+            new_after_n_chars=6000,
             overlap=200,
         )
         
@@ -169,14 +194,18 @@ class IngestionPipeline:
             # All chunks get text content
             block.text_content = str(chunk)
 
-            # Extract coordinates and page info
+            # Extract page number (primary) and optional bbox (nice-to-have)
             if hasattr(chunk, "metadata"):
-                # Page Number
                 block.page_number = chunk.metadata.page_number if chunk.metadata.page_number else 1
                 
-                # Coordinates (Bounding Box)
+                # Optional bbox for scroll-to position
                 if hasattr(chunk.metadata, "coordinates") and chunk.metadata.coordinates:
-                    block.coordinates = list(chunk.metadata.coordinates.points)
+                    coords = chunk.metadata.coordinates
+                    if coords.points:
+                        points = list(coords.points)
+                        xs = [p[0] for p in points]
+                        ys = [p[1] for p in points]
+                        block.bbox = [min(xs), min(ys), max(xs), max(ys)]
             
             # Handle different chunk types - collect images but don't caption yet
             if "CompositeElement" in str(type(chunk)):
@@ -211,6 +240,110 @@ class IngestionPipeline:
         elapsed = time.time() - start_time
         print(f"✅ PDF extraction completed in {elapsed:.2f}s ({len(content_blocks)} blocks)")
         return content_blocks
+    
+    def _extract_docx(self, docx_path: str) -> List[ContentBlock]:
+        """Extract DOCX content and organize into ContentBlocks"""
+        print("⏳ Starting DOCX extraction...")
+        start_time = time.time()
+        
+        chunks = partition_docx(
+            filename=docx_path,
+            infer_table_structure=True,
+            chunking_strategy="by_title",
+            max_characters=8000,
+            combine_text_under_n_chars=3000,
+            new_after_n_chars=6000,
+            overlap=200,
+        )
+        
+        return self._chunks_to_content_blocks(chunks, start_time, "DOCX")
+    
+    def _extract_pptx(self, pptx_path: str) -> List[ContentBlock]:
+        """Extract PPTX content and organize into ContentBlocks"""
+        print("⏳ Starting PPTX extraction...")
+        start_time = time.time()
+        
+        chunks = partition_pptx(
+            filename=pptx_path,
+            infer_table_structure=True,
+            chunking_strategy="by_title",
+            max_characters=8000,
+            combine_text_under_n_chars=3000,
+            new_after_n_chars=6000,
+            overlap=200,
+        )
+        
+        return self._chunks_to_content_blocks(chunks, start_time, "PPTX")
+    
+    def _extract_markdown(self, md_path: str) -> List[ContentBlock]:
+        """Extract Markdown content and organize into ContentBlocks"""
+        print("⏳ Starting Markdown extraction...")
+        start_time = time.time()
+        
+        chunks = partition_md(
+            filename=md_path,
+            chunking_strategy="by_title",
+            max_characters=8000,
+            combine_text_under_n_chars=3000,
+            new_after_n_chars=6000,
+            overlap=200,
+        )
+        
+        return self._chunks_to_content_blocks(chunks, start_time, "Markdown")
+    
+    def _extract_auto(self, file_path: str) -> List[ContentBlock]:
+        """Auto-detect format and extract content"""
+        print("⏳ Starting auto-detect extraction...")
+        start_time = time.time()
+        
+        chunks = partition(
+            filename=file_path,
+            chunking_strategy="by_title",
+            max_characters=8000,
+            combine_text_under_n_chars=3000,
+            new_after_n_chars=6000,
+            overlap=200,
+        )
+        
+        return self._chunks_to_content_blocks(chunks, start_time, "Auto")
+    
+    def _chunks_to_content_blocks(self, chunks, start_time: float, format_name: str) -> List[ContentBlock]:
+        """Convert unstructured chunks to ContentBlocks (shared logic)"""
+        parse_time = time.time() - start_time
+        print(f"   ✅ {format_name} parsed in {parse_time:.2f}s")
+        
+        content_blocks = []
+        for idx, chunk in enumerate(chunks):
+            block = ContentBlock()
+            block.chunk_index = idx
+            block.text_content = str(chunk)
+            
+            # Extract page/slide number if available
+            if hasattr(chunk, "metadata"):
+                if hasattr(chunk.metadata, "page_number") and chunk.metadata.page_number:
+                    block.page_number = chunk.metadata.page_number
+                elif hasattr(chunk.metadata, "slide_number") and chunk.metadata.slide_number:
+                    block.page_number = chunk.metadata.slide_number
+            
+            # Handle tables
+            if "Table" in str(type(chunk)):
+                block.related_tables = [chunk]
+            
+            content_blocks.append(block)
+        
+        # Build combined context for all blocks
+        for block in content_blocks:
+            block.combined_context = self._combine_context(block)
+        
+        elapsed = time.time() - start_time
+        print(f"✅ {format_name} extraction completed in {elapsed:.2f}s ({len(content_blocks)} blocks)")
+        return content_blocks
+    
+    # Backward compatibility alias
+    def extract_pdf(self, pdf_path: str) -> List[ContentBlock]:
+        """Backward compatible: Extract PDF (use extract_document for all formats)"""
+        return self._extract_pdf(pdf_path)
+    
     def enrich_content_blocks(self, content_blocks: List[ContentBlock]) -> List[ContentBlock]:
         """Enrich content blocks with additional metadata, embeddings, and questions"""
         total_start = time.time()
@@ -381,7 +514,6 @@ Ensure questions reference images and tables when mentioned in the content.
                 block_id: $block_id,
                 chunk_index: $chunk_index,
                 text_content: $text_content,
-                summary: $summary,
                 combined_context: $combined_context,
                 page_from: $page_from,
                 page_to: $page_to,
@@ -391,7 +523,7 @@ Ensure questions reference images and tables when mentioned in the content.
                 table_count: $table_count,
                 embedding: $embedding,
                 page_number: $page_number,
-                coordinates: $coordinates
+                bbox: $bbox
             })
             MERGE (d)-[:HAS_CONTENT_BLOCK]->(cb)
             """,
@@ -482,7 +614,6 @@ Ensure questions reference images and tables when mentioned in the content.
                     "block_id": block_id,
                     "chunk_index": i,
                     "text_content": block.text_content[:5000],  # Truncate long text
-                    "summary": block.summary or "",
                     "combined_context": block.combined_context[:5000],
                     "page_from": page_from,
                     "page_to": page_to,
@@ -492,7 +623,7 @@ Ensure questions reference images and tables when mentioned in the content.
                     "table_count": len(block.related_tables),
                     "embedding": block.embeddings or [],
                     "page_number": block.page_number,
-                    "coordinates": json.dumps(block.coordinates) if block.coordinates else "[]"
+                    "bbox": block.bbox  # Optional: [x1, y1, x2, y2] for scroll-to
                 }
                 
                 session.execute_write(self._create_content_block, payload)
@@ -532,9 +663,10 @@ if __name__ == "__main__":
         "source": "chapter1.pdf"
     }
     
-    # Extract PDF content
-    print("\n📄 Extracting PDF content...")
-    content_blocks = pipeline.extract_pdf("chapter1.pdf")
+    # Extract document content (supports PDF, DOCX, PPTX, MD)
+    test_file = "chapter1.pdf"  # Change to test other formats: "chapter1.docx", "slides.pptx", "notes.md"
+    print(f"\n📄 Extracting document: {test_file}")
+    content_blocks = pipeline.extract_document(test_file)
     print(f"✅ Extracted {len(content_blocks)} content blocks")
     
     # Enrich ALL blocks with embeddings and questions

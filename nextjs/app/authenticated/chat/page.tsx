@@ -4,12 +4,13 @@ import { CopilotChat } from "@copilotkit/react-ui";
 
 export default function ChatPage() {
   return (
-    <div className="flex flex-col h-full w-full">
+    <div className="h-[calc(100vh-4rem)] w-full p-4">
       <CopilotChat
-        instructions={"You are assisting the user as best as you can. Answer in the best way possible given the data you have."}
+        className="h-full w-full"
+        instructions={"You are a helpful academic tutor. Explain concepts clearly and patiently."}
         labels={{
-          title: "Your Assistant",
-          initial: "Hi! 👋 How can I assist you today?",
+          title: "Study Room",
+          initial: "Welcome to the study room. What subject are we focusing on today?",
         }}
       />
     </div>

@@ -1,54 +1,95 @@
 """
 Hybrid Search retrieval for chat agent.
 Uses Neo4j vector indexes + Fulltext indexes with Reciprocal Rank Fusion (RRF).
+Supports user-scoped retrieval for document isolation.
 """
 
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 from dotenv import load_dotenv
 from ingestion_workflow import embed_text, get_neo4j_driver
 
 load_dotenv()
 
-# HYBRID SEARCH QUERY (Vector + Keyword + RRF Fusion)
-# Uses Rank-based fusion (1 / (k + rank)) to normalize scores
+# USER-FILTERED HYBRID SEARCH QUERY (Vector + Keyword + RRF Fusion)
+# Pre-fetches user's ContentBlocks, then runs vector/keyword search within that set
+# Supports optional doc_id for single-document scoping
 RETRIEVAL_QUERY = """
-WITH $qvec AS qv, $query_text AS qt, $k AS k
+// Step 1: Get ContentBlocks owned by this user (optionally filtered to single doc)
+MATCH (u:User {id: $user_id})-[:UPLOADED]->(d:Document)-[:HAS_CONTENT_BLOCK]->(cb:ContentBlock)
+WHERE $doc_id = '' OR d.documentId = $doc_id
+WITH collect(cb) AS userBlocks, collect(id(cb)) AS userBlockIds, $qvec AS qvec, $query_text AS qt
 
-// 1. Vector Search (Semantic) - Searches the embedding of combined_context
-CALL db.index.vector.queryNodes($index_name, k, qv)
-YIELD node, score
-WITH collect(node) AS vectorNodes, qt, k
+// Step 2: Vector Search (returns top candidates from ENTIRE index)
+CALL db.index.vector.queryNodes($index_name, $limit * 3, qvec)
+YIELD node, score AS vectorScore
+// Filter to only user's blocks
+WHERE id(node) IN userBlockIds
+WITH userBlocks, userBlockIds, qt, collect({node: node, score: vectorScore}) AS vectorResults
 
-// 2. Keyword Search (Exact Match) - Searches text_content AND combined_context
-// We query the fulltext index for the raw text
-CALL db.index.fulltext.queryNodes('contentBlockFulltextIdx', qt, {limit: k})
-YIELD node, score
-WITH vectorNodes, collect(node) AS keywordNodes, k
+// Step 3: Keyword Search
+CALL db.index.fulltext.queryNodes('contentBlockFulltextIdx', qt, {limit: $limit * 3})
+YIELD node, score AS keywordScore
+// Filter to only user's blocks
+WHERE id(node) IN userBlockIds
+WITH vectorResults, collect({node: node, score: keywordScore}) AS keywordResults
 
-// 3. RRF Fusion Calculation
+// Step 4: Prepare ranked lists for RRF
+WITH [r IN vectorResults | r.node] AS vectorNodes,
+     [r IN keywordResults | r.node] AS keywordNodes
+
+// Step 5: RRF Fusion - combine all unique candidates
 UNWIND (vectorNodes + keywordNodes) AS candidate
 WITH DISTINCT candidate, vectorNodes, keywordNodes
 
 // Calculate 0-based Rank in each list (or null if not found)
-// This simulates an 'indexOf' function
 WITH candidate, 
      [x IN range(0, size(vectorNodes)-1) WHERE vectorNodes[x] = candidate][0] AS vRank,
      [x IN range(0, size(keywordNodes)-1) WHERE keywordNodes[x] = candidate][0] AS kRank
 
 // Apply RRF Formula: Score = 1 / (60 + rank + 1)
-// 60 is the standard smoothing constant
 WITH candidate,
      CASE WHEN vRank IS NOT NULL THEN 1.0 / (60 + vRank + 1) ELSE 0.0 END AS vScore,
      CASE WHEN kRank IS NOT NULL THEN 1.0 / (60 + kRank + 1) ELSE 0.0 END AS kScore
 
 RETURN candidate, (vScore + kScore) AS score
 ORDER BY score DESC
-LIMIT k
+LIMIT $limit
+"""
+
+# Fallback query without user filtering (for backwards compatibility / testing)
+RETRIEVAL_QUERY_NO_USER = """
+// 1. Vector Search (Semantic)
+CALL db.index.vector.queryNodes($index_name, $limit, $qvec)
+YIELD node, score
+WITH collect(node) AS vectorNodes, $query_text AS qt
+
+// 2. Keyword Search (Exact Match)
+CALL db.index.fulltext.queryNodes('contentBlockFulltextIdx', qt, {limit: $limit})
+YIELD node, score
+WITH vectorNodes, collect(node) AS keywordNodes
+
+// 3. RRF Fusion Calculation
+UNWIND (vectorNodes + keywordNodes) AS candidate
+WITH DISTINCT candidate, vectorNodes, keywordNodes
+
+WITH candidate, 
+     [x IN range(0, size(vectorNodes)-1) WHERE vectorNodes[x] = candidate][0] AS vRank,
+     [x IN range(0, size(keywordNodes)-1) WHERE keywordNodes[x] = candidate][0] AS kRank
+
+WITH candidate,
+     CASE WHEN vRank IS NOT NULL THEN 1.0 / (60 + vRank + 1) ELSE 0.0 END AS vScore,
+     CASE WHEN kRank IS NOT NULL THEN 1.0 / (60 + kRank + 1) ELSE 0.0 END AS kScore
+
+RETURN candidate, (vScore + kScore) AS score
+ORDER BY score DESC
+LIMIT $limit
 """
 
 
 def retrieve_context(
     query_text: str,
+    user_id: str = None,    # User ID for document isolation
+    doc_id: str = None,     # Optional: scope to single document
     index_name: str = "contentBlockEmbeddingIdx",
     k: int = 8,             # Candidates to fetch (RRF will rank them)
     min_score: float = 0.018,  # RRF threshold - filters low-quality matches
@@ -59,6 +100,8 @@ def retrieve_context(
     
     Args:
         query_text: User query string
+        user_id: User ID to filter documents (None = all documents, for testing)
+        doc_id: Optional document ID to scope chat to single document
         index_name: Name of Neo4j vector index
         k: Number of candidate results to fetch
         min_score: Minimum RRF score threshold (0.033 max, 0.018 ≈ top 3-4)
@@ -77,16 +120,25 @@ def retrieve_context(
         print("❌ Failed to generate query embedding")
         return ""
     
-    print("🔎 Running Hybrid Search (Vector + Keyword + RRF)...")
+    # Choose query based on whether user_id is provided
+    if user_id:
+        scope = f"doc: {doc_id}" if doc_id else "all docs"
+        print(f"🔎 Running User-Scoped Hybrid Search (user: {user_id}, {scope})")
+        query = RETRIEVAL_QUERY
+    else:
+        print("🔎 Running Global Hybrid Search (no user filter - testing mode)")
+        query = RETRIEVAL_QUERY_NO_USER
     
     with driver.session() as session:
         try:
             result = session.run(
-                RETRIEVAL_QUERY,
+                query,
                 qvec=qvec,
-                query_text=query_text, # Pass raw text for keyword search
+                query_text=query_text,
                 index_name=index_name,
-                k=k
+                limit=k,
+                user_id=user_id or "",  # Pass empty string if None
+                doc_id=doc_id or ""      # Pass empty string for all docs
             )
             
             items = [

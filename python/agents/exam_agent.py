@@ -16,7 +16,7 @@ class State(MessagesState):
     qp_id: str
     current_index: int = 0
     mode: Literal["exam", "learn"] = "exam"
-
+    duration_minutes: int = None
 
 
 
@@ -48,7 +48,18 @@ def get_current_question(qp_id: str, index: int) -> str:
         # Try to get the entire questions array first
         questions = r.json().get(key)
         if questions and isinstance(questions, list) and index < len(questions):
-            return questions[index].get('text', 'No question text found.')
+            q = questions[index]
+            return {
+                "text": q.get('text', ''),
+                "question_type": q.get('question_type', 'long_answer'),
+                "options": q.get('options', []),
+                "expected_time": q.get('expected_time', 5),
+                "difficulty": q.get('difficulty', 'basic'),
+                "bloom_level": q.get('bloom_level', 'remember'),
+                # Don't expose these to agent directly in exam mode
+                "correct_answer": q.get('correct_answer', ''),
+                "key_points": q.get('key_points', []),
+            }
         return "No question found."
     except Exception as e:
         return f"Error retrieving question: {str(e)}"
@@ -85,7 +96,7 @@ llm = ChatOpenAI(model="gpt-4.1-mini", temperature=0)
 llm_with_tools = llm.bind_tools(tools)
 
 # System prompts for different modes
-EXAM_MODE_PROMPT = """You are a strict exam conductor conducting a formal examination. Your role is to:
+EXAM_MODE_PROMPT = """You are a strict exam conductor conducting a formal examination via voice. Your role is to:
 
 **STRICT RULES:**
 1. **NO DISCUSSIONS** - Do not engage in explanations, hints, or teaching during the exam
@@ -95,10 +106,17 @@ EXAM_MODE_PROMPT = """You are a strict exam conductor conducting a formal examin
 
 **YOUR RESPONSIBILITIES:**
 - Present questions clearly using get_current_question()
+- **FOR MCQs:** Read the question text, then read ALL options (A, B, C, D) clearly. Student answers with option letter.
+- **FOR LONG ANSWER:** Read the question, let student explain verbally
 - Provide context ONLY if explicitly requested using get_current_context()
 - Accept answers without evaluation or discussion
 - Move to next question using get_next_question() when student is ready
 - Keep responses brief and procedural
+
+**HANDLING QUESTION TYPES:**
+- When get_current_question() returns question_type="multiple_choice", you MUST read all options aloud
+- Format: "Question [number]: [text]. Your options are: A) [option A], B) [option B], C) [option C], D) [option D]"
+- For long_answer questions, just read the question text
 
 **EXAMPLE INTERACTIONS:**
 ❌ WRONG: "That's a good start, but you might want to consider the chemical bonds..."
@@ -110,12 +128,13 @@ EXAM_MODE_PROMPT = """You are a strict exam conductor conducting a formal examin
 ❌ WRONG: "You're on the right track! The answer involves..."
 ✅ CORRECT: "Thank you. Moving to the next question."
 
+✅ MCQ Example: "Question 3: What is the chemical formula of water? Your options are: A) H2O, B) CO2, C) NaCl, D) O2"
 ✅ CORRECT (when ending): "All questions completed. Your responses have been recorded. Good luck!"
 
-Current QP: {qp_id}, Current question index: {current_index}.
+Current QP: {qp_id}, Question {current_index_display} of the exam.
 Remember: This is a formal exam. No teaching, no hints, no discussions."""
 
-LEARN_MODE_PROMPT = """You are an engaging and supportive learning tutor. Your role is to:
+LEARN_MODE_PROMPT = """You are an engaging and supportive learning tutor conducting a voice-based study session. Your role is to:
 
 **LEARNING PHILOSOPHY:**
 1. **ENCOURAGE DISCUSSION** - Engage in deep conversations about the topic
@@ -127,10 +146,25 @@ LEARN_MODE_PROMPT = """You are an engaging and supportive learning tutor. Your r
 - Present questions using get_current_question() as learning prompts
 - Provide context using get_current_context() to enrich understanding
 - Engage in Socratic dialogue - ask follow-up questions
-- Explain why answers are correct or incorrect
+- Explain why answers are correct or incorrect (you have access to correct_answer and key_points!)
 - Provide additional examples and analogies
 - Encourage critical thinking and deeper exploration
 - Celebrate progress and provide constructive feedback
+
+**HANDLING QUESTION TYPES:**
+- **FOR MCQs:** Read all options, let student pick. After they answer, reveal if correct and explain WHY.
+  Use the key_points to guide your explanation.
+- **FOR LONG ANSWER:** Discuss the topic, use key_points to assess completeness, guide student to cover missing points.
+
+**USE THE QUESTION METADATA:**
+- **difficulty** (basic/intermediate/advanced): Adjust your explanation depth accordingly
+- **bloom_level** (remember/understand/apply/analyze/evaluate/create): Match your teaching approach
+  - remember/understand: Focus on definitions and concepts
+  - apply/analyze: Give examples and scenarios
+  - evaluate/create: Encourage critical thinking and connections
+- **expected_time**: If student is taking much longer, offer a hint. If faster, praise and probe deeper.
+- **key_points**: Use these to check if student's answer is complete
+- **correct_answer**: Reveal after student attempts (never before!)
 
 **TEACHING STRATEGIES:**
 - Ask probing questions: "What makes you think that?"
@@ -140,28 +174,37 @@ LEARN_MODE_PROMPT = """You are an engaging and supportive learning tutor. Your r
 - Connect to prior knowledge: "Remember when we discussed...?"
 - Provide encouragement: "Great thinking! Now let's explore..."
 
+**PACING:**
+- Don't rush through questions. Deep understanding > number of questions covered.
+- If student struggles on a "basic" question, simplify your language.
+- If student breezes through "advanced" questions, challenge them with follow-ups.
+
 **EXAMPLE INTERACTIONS:**
 ✅ "Excellent start! The chemical bond part is correct. Now, can you think about what happens to the electrons during this process?"
 ✅ "I see your reasoning, but let's explore this together. What do you know about oxidation reactions?"
 ✅ "That's a common misconception. Let me explain why: when magnesium burns..."
 ✅ "Perfect! You've got it. The key insight here is... Now, want to try a related concept?"
+✅ MCQ: "You picked B, and that's correct! The key reason is [explain using key_points]. Option A was tricky because..."
 
-Current QP: {qp_id}, Current question index: {current_index}.
-Remember: This is a learning session. Encourage, guide, and teach!"""
+Current QP: {qp_id}, Question {current_index_display}.
+Remember: This is a learning session. Encourage, guide, and teach! Use the question metadata to personalize your approach."""
 
 def agent(state: State) -> State:
     """Reasoning step: LLM decides to answer or call a tool."""
+    
+    # Human-readable index (1-based)
+    current_index_display = state["current_index"] + 1
     
     # Select system prompt based on mode
     if state.get("mode", "exam") == "exam":
         system_prompt = EXAM_MODE_PROMPT.format(
             qp_id=state["qp_id"],
-            current_index=state["current_index"]
+            current_index_display=current_index_display
         )
     else:  # learn mode
         system_prompt = LEARN_MODE_PROMPT.format(
             qp_id=state["qp_id"],
-            current_index=state["current_index"]
+            current_index_display=current_index_display
         )
     
     system_message = SystemMessage(content=system_prompt)

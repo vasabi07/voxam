@@ -58,6 +58,15 @@
 ### 3. Citation & Document Navigation
 **Files**: `python/retrieval.py`, `nextjs/app/authenticated/chat/page.tsx`
 
+#### Document-Scoped Chat (Like Vizuara)
+- [x] Add `doc_id` parameter to retrieval query
+- [x] Update chat agent to extract `doc_id` from CopilotKit context
+- [ ] Add `useCopilotReadable` for current document context in frontend
+- [ ] Split-pane UI: PDF viewer on left, chat on right
+- [ ] "Chat about this document" button on document cards
+- [ ] Pass `doc_id` when user opens specific document
+- [ ] Scope retrieval to single document when `doc_id` is set
+
 #### Human-in-the-Loop Citation System
 - [ ] Add citation metadata to chat responses
 - [ ] Display clickable citation links in chat UI
@@ -189,6 +198,17 @@
 - [ ] Track exam completion rates
 - [ ] Performance reports
 - [ ] Export results as PDF
+
+### 10.5 Video/Lecture Support (V2)
+**Competition**: Vizuara does text-only. This differentiates Voxam.
+
+- [ ] Upload lecture videos (MP4, YouTube URL)
+- [ ] Whisper transcription → chunks → same RAG pipeline
+- [ ] VLM for slide analysis (GPT-4V, Gemini) - extract diagrams, formulas
+- [ ] Sync transcript with video timestamps
+- [ ] "What did the professor say about X?" queries
+- [ ] Jump-to-timestamp citations in video player
+- [ ] Multi-modal context: combine PDF + lecture for comprehensive answers
 
 ### 11. Advanced Features (Later)
 - [ ] Voice cloning for personalized tutors

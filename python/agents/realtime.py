@@ -217,7 +217,7 @@ async def start_exam_agent(room_name: str, token: str, qp_id: str, thread_id: st
         
         try:
             # Initialize Deepgram Flux client
-            dg_client = AsyncDeepgramClient()
+            dg_client = AsyncDeepgramClient() 
             
             # Connect to Deepgram Flux v2 with async context manager
             # Using flux-general-en model with 48kHz linear16 audio
