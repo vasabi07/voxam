@@ -244,24 +244,24 @@ export default function Home() {
           <div className="container mx-auto px-4 md:px-6">
             <div className="text-center mb-16">
               <h2 className="text-3xl font-bold tracking-tighter sm:text-4xl">Simple, Transparent Pricing</h2>
-              <p className="mt-4 text-muted-foreground">Start for free, upgrade as you master your subjects.</p>
+              <p className="mt-4 text-muted-foreground">Buy minutes once, use anytime. No subscriptions.</p>
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 max-w-6xl mx-auto">
-              {/* Free Plan */}
+              {/* Free Trial */}
               <Card className="border-border/50 bg-background/50 backdrop-blur-sm hover:shadow-lg transition-all text-center sm:text-left">
                 <CardHeader>
                   <CardTitle>Free Trial</CardTitle>
                   <div className="mt-4 flex items-baseline justify-center sm:justify-start text-4xl font-extrabold tracking-tight">
                     ₹0
                   </div>
-                  <CardDescription className="mt-2">Try before you commit</CardDescription>
+                  <CardDescription className="mt-2">Try before you buy</CardDescription>
                 </CardHeader>
                 <CardContent>
                   <ul className="space-y-3 text-sm">
-                    <li className="flex items-center justify-center sm:justify-start"><Check className="mr-2 h-4 w-4 text-primary" /> 30 mins voice exams</li>
-                    <li className="flex items-center justify-center sm:justify-start"><Check className="mr-2 h-4 w-4 text-primary" /> 50 chat messages</li>
-                    <li className="flex items-center justify-center sm:justify-start"><Check className="mr-2 h-4 w-4 text-primary" /> 10 document pages</li>
+                    <li className="flex items-center justify-center sm:justify-start"><Check className="mr-2 h-4 w-4 text-primary" /> 15 mins voice exam</li>
+                    <li className="flex items-center justify-center sm:justify-start"><Check className="mr-2 h-4 w-4 text-primary" /> 10 chat messages</li>
+                    <li className="flex items-center justify-center sm:justify-start"><Check className="mr-2 h-4 w-4 text-primary" /> 1 document (20 pages)</li>
                   </ul>
                   <Link href="/login" className="w-full">
                     <Button className="mt-8 w-full" variant="outline">Start Free</Button>
@@ -269,22 +269,21 @@ export default function Home() {
                 </CardContent>
               </Card>
 
-              {/* Starter Plan */}
+              {/* Starter Pack */}
               <Card className="border-border/50 bg-background/50 backdrop-blur-sm hover:shadow-lg transition-all text-center sm:text-left">
                 <CardHeader>
                   <CardTitle>Starter</CardTitle>
                   <div className="mt-4 flex items-baseline justify-center sm:justify-start text-4xl font-extrabold tracking-tight">
                     ₹299
-                    <span className="ml-1 text-lg font-medium text-muted-foreground">/mo</span>
                   </div>
-                  <CardDescription className="mt-2">For regular practice</CardDescription>
+                  <CardDescription className="mt-2">90 minutes of voice exams</CardDescription>
                 </CardHeader>
                 <CardContent>
                   <ul className="space-y-3 text-sm">
                     <li className="flex items-center justify-center sm:justify-start"><Check className="mr-2 h-4 w-4 text-primary" /> 90 mins voice exams</li>
-                    <li className="flex items-center justify-center sm:justify-start"><Check className="mr-2 h-4 w-4 text-primary" /> 200 chat messages</li>
+                    <li className="flex items-center justify-center sm:justify-start"><Check className="mr-2 h-4 w-4 text-primary" /> Unlimited chat</li>
                     <li className="flex items-center justify-center sm:justify-start"><Check className="mr-2 h-4 w-4 text-primary" /> 50 document pages</li>
-                    <li className="flex items-center justify-center sm:justify-start"><Check className="mr-2 h-4 w-4 text-primary" /> 3 correction reports</li>
+                    <li className="flex items-center justify-center sm:justify-start"><Check className="mr-2 h-4 w-4 text-primary" /> Correction reports</li>
                   </ul>
                   <Link href="/login" className="w-full">
                     <Button className="mt-8 w-full" variant="outline">Get Started</Button>
@@ -292,25 +291,24 @@ export default function Home() {
                 </CardContent>
               </Card>
 
-              {/* Pro Plan */}
+              {/* Standard Pack - Most Popular */}
               <Card className="relative border-primary shadow-lg bg-background sm:scale-105 z-10 text-center sm:text-left">
                 <div className="absolute -top-4 left-0 right-0 flex justify-center">
                   <Badge className="bg-primary hover:bg-primary">Most Popular</Badge>
                 </div>
                 <CardHeader>
-                  <CardTitle>Pro</CardTitle>
+                  <CardTitle>Standard</CardTitle>
                   <div className="mt-4 flex items-baseline justify-center sm:justify-start text-4xl font-extrabold tracking-tight">
                     ₹599
-                    <span className="ml-1 text-lg font-medium text-muted-foreground">/mo</span>
                   </div>
-                  <CardDescription className="mt-2">For serious learners</CardDescription>
+                  <CardDescription className="mt-2">250 minutes of voice exams</CardDescription>
                 </CardHeader>
                 <CardContent>
                   <ul className="space-y-3 text-sm">
-                    <li className="flex items-center justify-center sm:justify-start"><Check className="mr-2 h-4 w-4 text-primary" /> 180 mins voice exams</li>
-                    <li className="flex items-center justify-center sm:justify-start"><Check className="mr-2 h-4 w-4 text-primary" /> 500 chat messages</li>
-                    <li className="flex items-center justify-center sm:justify-start"><Check className="mr-2 h-4 w-4 text-primary" /> 150 document pages</li>
-                    <li className="flex items-center justify-center sm:justify-start"><Check className="mr-2 h-4 w-4 text-primary" /> 10 correction reports</li>
+                    <li className="flex items-center justify-center sm:justify-start"><Check className="mr-2 h-4 w-4 text-primary" /> 250 mins voice exams</li>
+                    <li className="flex items-center justify-center sm:justify-start"><Check className="mr-2 h-4 w-4 text-primary" /> Unlimited chat</li>
+                    <li className="flex items-center justify-center sm:justify-start"><Check className="mr-2 h-4 w-4 text-primary" /> 200 document pages</li>
+                    <li className="flex items-center justify-center sm:justify-start"><Check className="mr-2 h-4 w-4 text-primary" /> Correction reports</li>
                   </ul>
                   <Link href="/login" className="w-full">
                     <Button className="mt-8 w-full">Get Started</Button>
@@ -318,22 +316,21 @@ export default function Home() {
                 </CardContent>
               </Card>
 
-              {/* Unlimited Plan */}
+              {/* Achiever Pack */}
               <Card className="border-border/50 bg-background/50 backdrop-blur-sm hover:shadow-lg transition-all text-center sm:text-left">
                 <CardHeader>
-                  <CardTitle>Unlimited</CardTitle>
+                  <CardTitle>Achiever</CardTitle>
                   <div className="mt-4 flex items-baseline justify-center sm:justify-start text-4xl font-extrabold tracking-tight">
-                    ₹999
-                    <span className="ml-1 text-lg font-medium text-muted-foreground">/mo</span>
+                    ₹1,099
                   </div>
-                  <CardDescription className="mt-2">Maximum preparation</CardDescription>
+                  <CardDescription className="mt-2">500 minutes of voice exams</CardDescription>
                 </CardHeader>
                 <CardContent>
                   <ul className="space-y-3 text-sm">
-                    <li className="flex items-center justify-center sm:justify-start"><Check className="mr-2 h-4 w-4 text-primary" /> 400 mins voice exams</li>
-                    <li className="flex items-center justify-center sm:justify-start"><Check className="mr-2 h-4 w-4 text-primary" /> 2000 chat messages</li>
-                    <li className="flex items-center justify-center sm:justify-start"><Check className="mr-2 h-4 w-4 text-primary" /> 300 document pages</li>
-                    <li className="flex items-center justify-center sm:justify-start"><Check className="mr-2 h-4 w-4 text-primary" /> 30 correction reports</li>
+                    <li className="flex items-center justify-center sm:justify-start"><Check className="mr-2 h-4 w-4 text-primary" /> 500 mins voice exams</li>
+                    <li className="flex items-center justify-center sm:justify-start"><Check className="mr-2 h-4 w-4 text-primary" /> Unlimited chat</li>
+                    <li className="flex items-center justify-center sm:justify-start"><Check className="mr-2 h-4 w-4 text-primary" /> 500 document pages</li>
+                    <li className="flex items-center justify-center sm:justify-start"><Check className="mr-2 h-4 w-4 text-primary" /> Correction reports</li>
                   </ul>
                   <Link href="/login" className="w-full">
                     <Button className="mt-8 w-full" variant="outline">Get Started</Button>
