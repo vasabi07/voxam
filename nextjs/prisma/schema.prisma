@@ -1,8 +1,5 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
-// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
-// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+// Voxam Prisma Schema
+// Simplified for MVP - no institution/teacher models (v2)
 
 generator client {
   provider = "prisma-client-js"
@@ -12,96 +9,234 @@ generator client {
 datasource db {
   provider = "postgresql"
 }
+
+// ========== CORE USER ==========
+
 model User {
-  id String @id @default(uuid())
-  email String @unique
-  name  String
-  password String
+  id        String   @id // Supabase auth UID
+  email     String   @unique
+  name      String?
+  avatarUrl String?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  documents Document[]
-  memberships InstitutionUser[]
-  meetings Meeting[]
+  // Subscription (merged from separate table)
+  razorpayCustomerId     String?  @unique
+  razorpaySubscriptionId String?  @unique
+  subscriptionStatus     SubscriptionStatus @default(FREE)
+  currentPlanId          String?
+  currentPeriodStart     DateTime?
+  currentPeriodEnd       DateTime?
+
+  // Usage (merged from UserCredits table)
+  voiceMinutesUsed   Int @default(0)
+  chatMessagesUsed   Int @default(0)
+  pagesUsed          Int @default(0)
+  voiceMinutesLimit  Int @default(15)   // Free tier: 1 short exam
+  chatMessagesLimit  Int @default(50)   // Free tier default
+  pagesLimit         Int @default(3)    // Free tier: 1 small doc
+  cycleResetDate     DateTime?
+
+  // Relations
+  documents    Document[]
+  examSessions ExamSession[]
+  transactions Transaction[]
+
+  currentPlan SubscriptionPlan? @relation(fields: [currentPlanId], references: [id])
+
+  @@index([email])
+  @@index([razorpaySubscriptionId])
 }
 
-model Institution {
-  id String @id @default(uuid())
-  name String
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  documents Document[]
-  members InstitutionUser[]
-}
-
-model InstitutionUser {
-  id String @id @default(uuid())
-  userId String
-  institutionId String
-  role Role @default(STUDENT)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  user User @relation(fields: [userId], references: [id])
-  institution Institution @relation(fields: [institutionId], references: [id])
-
-  @@unique([userId, institutionId])
-  @@index([institutionId])
-  @@index([userId])
-}
+// ========== DOCUMENTS ==========
 
 model Document {
-  id String @id @default(uuid())
-  title String
-  url String
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id        String         @id @default(uuid())
+  title     String
+  fileKey   String         // R2/S3 storage key
+  fileName  String?        // Original filename
+  fileSize  Int?           // Size in bytes
+  mimeType  String?        // application/pdf, etc.
+  pageCount Int?
+  status    DocumentStatus @default(PENDING)
+  taskId    String?        // Celery task ID for processing
+  createdAt DateTime       @default(now())
+  updatedAt DateTime       @updatedAt
 
-  institution Institution? @relation(fields: [institutionId], references: [id])
-  institutionId String?
+  // Relations
+  userId String
+  user   User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  user User? @relation(fields: [userId], references: [id])
-  userId String?
+  examSessions ExamSession[]
 
-  @@index([institutionId])
   @@index([userId])
+  @@index([status])
 }
 
-model Meeting {
-  id String @id @default(uuid())
-  title String
-  agenda String?
-  scheduledAt DateTime @default(now()) // When exam was created or scheduled for
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  status MeetingStatus @default(SCHEDULED)
+// ========== EXAM SESSIONS ==========
+
+model ExamSession {
+  id        String     @id @default(uuid())
+  threadId  String     @unique // LangGraph thread ID
+  qpId      String     // Redis QP key
+  mode      ExamMode   @default(EXAM)
+  status    ExamStatus @default(IN_PROGRESS)
   
-  // Question Paper/Exam fields
-  documentId String
-  duration Int // Duration in minutes
+  // Exam settings
+  duration     Int      // Duration in minutes
   numQuestions Int
-  typeOfQp String // "regular", "midterm", "final", "quiz"
-  mode String @default("exam") // "exam" or "learn"
-  threadId String @unique @default(uuid()) // For tracking exam sessions
-  qpId String? // ID from Python API response (stored in Redis)
+  typeOfQp     String   @default("regular") // regular, midterm, final, quiz
   
-  user User @relation(fields: [userId], references: [id])
-  userId String
+  // Timestamps
+  startedAt   DateTime  @default(now())
+  endedAt     DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  // Relations
+  userId     String
+  user       User @relation(fields: [userId], references: [id], onDelete: Cascade)
   
+  documentId String
+  document   Document @relation(fields: [documentId], references: [id])
+
+  report CorrectionReport?
+
   @@index([userId])
   @@index([documentId])
   @@index([threadId])
-  @@index([qpId])
+  @@index([status])
 }
 
-enum Role {
-  STUDENT
-  ADMIN
+// ========== CORRECTION REPORTS ==========
+
+model CorrectionReport {
+  id        String   @id @default(uuid())
+  
+  // Scoring
+  score     Int      // 0-100
+  grade     String   // A+, A, B+, B, C, D, F
+  
+  // Feedback arrays (stored as JSON)
+  strengths      String[]
+  weaknesses     String[]
+  recommendations String[]
+  
+  // Summary
+  summary   String   @db.Text
+  
+  // Full report data
+  reportJson Json?
+  
+  // Processing
+  taskId    String?  // Celery task ID
+  
+  createdAt DateTime @default(now())
+
+  // Relations
+  examSessionId String      @unique
+  examSession   ExamSession @relation(fields: [examSessionId], references: [id], onDelete: Cascade)
 }
 
-enum MeetingStatus {
-  SCHEDULED
-  COMPLETED
-  CANCELLED
+// ========== SUBSCRIPTION PLANS ==========
+
+model SubscriptionPlan {
+  id             String  @id @default(uuid())
+  name           String  @unique // starter, pro, unlimited
+  displayName    String  // "Starter Plan"
+  razorpayPlanId String  @unique // plan_xxx from Razorpay
+  priceInr       Int     // 399, 699, 999 (in rupees, not paise)
+  
+  // Limits per billing cycle
+  voiceMinutes  Int
+  chatMessages  Int
+  pages         Int  // Pages per month
+  
+  // Status
+  isActive Boolean @default(true)
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  users User[]
+}
+
+// ========== TRANSACTIONS ==========
+
+model Transaction {
+  id                String            @id @default(uuid())
+  
+  // Razorpay IDs
+  razorpayPaymentId String?           @unique
+  razorpayInvoiceId String?
+  razorpayOrderId   String?
+  
+  // Amount
+  amount   Int    // Amount in paise (39900 = ₹399)
+  currency String @default("INR")
+  
+  // Status
+  status TransactionStatus
+  type   TransactionType
+  
+  // Metadata
+  metadata Json?
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  userId String
+  user   User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([razorpayPaymentId])
+  @@index([status])
+}
+
+// ========== ENUMS ==========
+
+enum SubscriptionStatus {
+  FREE       // No subscription
+  CREATED    // Subscription created, awaiting payment
+  ACTIVE     // Subscription active
+  PENDING    // Payment failed, retrying
+  HALTED     // Payment failed multiple times
+  CANCELLED  // User cancelled
+  EXPIRED    // Past end date
+}
+
+enum DocumentStatus {
+  PENDING    // Uploaded, not processed
+  PROCESSING // Currently being processed
+  READY      // Ready for use
+  FAILED     // Processing failed
+}
+
+enum ExamMode {
+  EXAM  // Strict exam mode
+  LEARN // Interactive learning mode
+}
+
+enum ExamStatus {
+  IN_PROGRESS // Exam ongoing
+  COMPLETED   // Exam finished
+  ABANDONED   // User left without finishing
+}
+
+enum TransactionStatus {
+  PENDING  // Awaiting payment
+  SUCCESS  // Payment successful
+  FAILED   // Payment failed
+  REFUNDED // Refunded
+}
+
+enum TransactionType {
+  SUBSCRIPTION_CREATED  // First subscription payment
+  SUBSCRIPTION_RENEWED  // Monthly renewal
+  SUBSCRIPTION_UPGRADED // Plan upgrade
+  PACK_PURCHASE         // One-time pack purchase
+  TOP_UP                // Extra credits purchase
+  REFUND                // Refund issued
 }
