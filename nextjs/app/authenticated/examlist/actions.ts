@@ -2,96 +2,90 @@
 
 import { db } from "@/lib/prisma"
 
-export async function createMeeting(data: {
+export async function createExamSession(data: {
   title: string
   userId: string
   documentId: string
   duration: number
   numQuestions: number
   typeOfQp: string
-  mode: string
+  mode: "EXAM" | "LEARN"
+  threadId: string
+  qpId: string
 }) {
   try {
-    const meeting = await db.meeting.create({
+    const examSession = await db.examSession.create({
       data: {
-        title: data.title,
-        userId: data.userId,
-        documentId: data.documentId,
+        threadId: data.threadId,
+        qpId: data.qpId,
+        mode: data.mode,
+        status: "IN_PROGRESS",
         duration: data.duration,
         numQuestions: data.numQuestions,
         typeOfQp: data.typeOfQp,
-        mode: data.mode,
-        scheduledAt: new Date(),
-        status: "SCHEDULED"
+        userId: data.userId,
+        documentId: data.documentId,
       }
     })
 
-    return { success: true, meeting }
+    return { success: true, examSession }
   } catch (error) {
-    console.error("Failed to create meeting:", error)
-    return { success: false, error: "Failed to create meeting" }
+    console.error("Failed to create exam session:", error)
+    return { success: false, error: "Failed to create exam session" }
   }
 }
 
-export async function updateMeetingQpId(meetingId: string, qpId: string) {
+export async function getExamSessions(userId: string) {
   try {
-    await db.meeting.update({
-      where: { id: meetingId },
-      data: { qpId }
-    })
-
-    return { success: true }
-  } catch (error) {
-    console.error("Failed to update meeting:", error)
-    return { success: false, error: "Failed to update meeting" }
-  }
-}
-
-export async function getMeetings(userId: string) {
-  try {
-    const meetings = await db.meeting.findMany({
+    const sessions = await db.examSession.findMany({
       where: { userId },
-      orderBy: { createdAt: 'desc' }
+      orderBy: { createdAt: 'desc' },
+      include: { document: true }
     })
 
-    return { success: true, meetings }
+    return { success: true, sessions }
   } catch (error) {
-    console.error("Failed to fetch meetings:", error)
-    return { success: false, error: "Failed to fetch meetings", meetings: [] }
+    console.error("Failed to fetch exam sessions:", error)
+    return { success: false, error: "Failed to fetch sessions", sessions: [] }
   }
 }
 
-export async function getUpcomingExams(userId: string) {
+export async function getInProgressExams(userId: string) {
   try {
-    const meetings = await db.meeting.findMany({
-      where: { 
+    const sessions = await db.examSession.findMany({
+      where: {
         userId,
-        status: "SCHEDULED"
+        status: "IN_PROGRESS"
       },
-      orderBy: { scheduledAt: 'asc' }
+      orderBy: { startedAt: 'asc' },
+      include: { document: true }
     })
 
-    return { success: true, meetings }
+    return { success: true, sessions }
   } catch (error) {
-    console.error("Failed to fetch upcoming exams:", error)
-    return { success: false, error: "Failed to fetch upcoming exams", meetings: [] }
+    console.error("Failed to fetch in-progress exams:", error)
+    return { success: false, error: "Failed to fetch exams", sessions: [] }
   }
 }
 
-export async function getPastExams(userId: string) {
+export async function getCompletedExams(userId: string) {
   try {
-    const meetings = await db.meeting.findMany({
-      where: { 
+    const sessions = await db.examSession.findMany({
+      where: {
         userId,
         status: "COMPLETED"
       },
-      orderBy: { scheduledAt: 'desc' }
+      orderBy: { endedAt: 'desc' },
+      include: {
+        document: true,
+        report: true
+      }
     })
 
-    return { success: true, meetings }
+    return { success: true, sessions }
   } catch (error) {
-    console.error("Failed to fetch past exams:", error)
-    return { success: false, error: "Failed to fetch past exams", meetings: [] }
+    console.error("Failed to fetch completed exams:", error)
+    return { success: false, error: "Failed to fetch exams", sessions: [] }
   }
 }
 
