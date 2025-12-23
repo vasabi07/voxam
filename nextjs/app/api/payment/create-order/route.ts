@@ -94,10 +94,11 @@ export async function POST(request: NextRequest) {
             keyId: process.env.RAZORPAY_KEY_ID,
         });
 
-    } catch (error: any) {
+    } catch (error: unknown) {
         console.error('Error creating order:', error);
+        const errorMessage = error instanceof Error ? error.message : 'Failed to create order';
         return NextResponse.json(
-            { error: error.message || 'Failed to create order' },
+            { error: errorMessage },
             { status: 500 }
         );
     }

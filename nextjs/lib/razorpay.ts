@@ -10,11 +10,12 @@ export const razorpay = new Razorpay({
 export const RAZORPAY_WEBHOOK_SECRET = process.env.RAZORPAY_WEBHOOK_SECRET!;
 
 // Helper to verify webhook signature
+import crypto from 'crypto';
+
 export function verifyWebhookSignature(
     body: string,
     signature: string
 ): boolean {
-    const crypto = require('crypto');
     const expectedSignature = crypto
         .createHmac('sha256', RAZORPAY_WEBHOOK_SECRET)
         .update(body)

@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { verifyWebhookSignature } from '@/lib/razorpay';
 import { db } from '@/lib/prisma';
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type WebhookPayload = any;
+
 /**
  * POST /api/webhooks/payment
  * Handles Razorpay webhook for one-time payments
@@ -55,7 +58,7 @@ export async function POST(request: NextRequest) {
 /**
  * Handle successful payment - grant minutes to user
  */
-async function handlePaymentCaptured(payload: any) {
+async function handlePaymentCaptured(payload: WebhookPayload) {
     const payment = payload.payload.payment.entity;
     const orderId = payment.order_id;
     const notes = payment.notes || {};
@@ -117,7 +120,7 @@ async function handlePaymentCaptured(payload: any) {
 /**
  * Handle failed payment
  */
-async function handlePaymentFailed(payload: any) {
+async function handlePaymentFailed(payload: WebhookPayload) {
     const payment = payload.payload.payment.entity;
     const notes = payment.notes || {};
 
