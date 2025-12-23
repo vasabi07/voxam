@@ -8,15 +8,24 @@ from redis import Redis
 from langchain_core.tools import tool
 from langgraph.prebuilt import ToolNode
 import time
+import os
 
 load_dotenv()
+
+CEREBRAS_API_KEY = os.getenv("CEREBRAS_API_KEY")
 
 class State(MessagesState):
     thread_id: str
     qp_id: str
+    user_id: Optional[str] = None              # User taking the exam
     current_index: int = 0
     mode: Literal["exam", "learn"] = "exam"
     duration_minutes: int = None
+    # Optimizations: cache current question to avoid tool calls
+    current_question: Optional[dict] = None    # {text, options, context, etc.}
+    total_questions: Optional[int] = None      # For completion check without Redis
+    exam_started: bool = False                 # Has first question been asked?
+    correction_task_id: Optional[str] = None   # Celery task ID for correction
 
 
 
@@ -41,196 +50,278 @@ except Exception as e:
 r = Redis(host="localhost", port=6379, decode_responses=True)
 
 @tool
-def get_current_question(qp_id: str, index: int) -> str:
-    """Return the current question text based on qp_id and index."""
+def advance_to_next_question(qp_id: str, current_index: int) -> dict:
+    """Advance to the next question in the exam. Call this when ready to move to the next question."""
     key = f"qp:{qp_id}:questions"
     try:
-        # Try to get the entire questions array first
+        next_index = current_index + 1
         questions = r.json().get(key)
-        if questions and isinstance(questions, list) and index < len(questions):
-            q = questions[index]
-            return {
+        
+        if not questions or not isinstance(questions, list):
+            return {"done": True, "error": "Question paper not found"}
+        
+        if next_index >= len(questions):
+            return {"done": True, "message": "All questions completed. Exam finished."}
+        
+        q = questions[next_index]
+        return {
+            "done": False,
+            "new_index": next_index,
+            "question": {
                 "text": q.get('text', ''),
                 "question_type": q.get('question_type', 'long_answer'),
                 "options": q.get('options', []),
+                "context": q.get('context', ''),
                 "expected_time": q.get('expected_time', 5),
                 "difficulty": q.get('difficulty', 'basic'),
                 "bloom_level": q.get('bloom_level', 'remember'),
-                # Don't expose these to agent directly in exam mode
                 "correct_answer": q.get('correct_answer', ''),
                 "key_points": q.get('key_points', []),
             }
-        return "No question found."
+        }
     except Exception as e:
-        return f"Error retrieving question: {str(e)}"
+        return {"done": True, "error": f"Error: {str(e)}"}
 
-@tool
-def get_current_context(qp_id: str, index: int) -> str:
-    """Return the current question's context text."""
+
+def preload_first_question(qp_id: str) -> tuple[dict, int]:
+    """Pre-load the first question and total count. Call before starting exam."""
     key = f"qp:{qp_id}:questions"
     try:
-        # Try to get the entire questions array first
         questions = r.json().get(key)
-        if questions and isinstance(questions, list) and index < len(questions):
-            return questions[index].get('context', 'No context found.')
-        return "No context found."
+        if questions and isinstance(questions, list) and len(questions) > 0:
+            q = questions[0]
+            first_question = {
+                "text": q.get('text', ''),
+                "question_type": q.get('question_type', 'long_answer'),
+                "options": q.get('options', []),
+                "context": q.get('context', ''),
+                "expected_time": q.get('expected_time', 5),
+                "difficulty": q.get('difficulty', 'basic'),
+                "bloom_level": q.get('bloom_level', 'remember'),
+                "correct_answer": q.get('correct_answer', ''),
+                "key_points": q.get('key_points', []),
+            }
+            return first_question, len(questions)
+        return None, 0
     except Exception as e:
-        return f"Error retrieving context: {str(e)}"
-
-@tool
-def get_next_question(qp_id: str, index: int) -> str:
-    """Return the next question after index."""
-    key = f"qp:{qp_id}:questions"
-    try:
-        next_index = index + 1
-        questions = r.json().get(key)
-        if questions and isinstance(questions, list) and next_index < len(questions):
-            return questions[next_index].get('text', 'No question text found.')
-        return "No more questions."
-    except Exception as e:
-        return f"Error retrieving next question: {str(e)}"
+        print(f"Error preloading question: {e}")
+        return None, 0
 
 
-tools = [get_current_question, get_current_context, get_next_question]
-llm = ChatOpenAI(model="gpt-4.1-mini", temperature=0)
+tools = [advance_to_next_question]
+# Using Cerebras GPT OSS 120B for superior reasoning and tutoring
+llm = ChatOpenAI(
+    model="gpt-oss-120b",
+    api_key=CEREBRAS_API_KEY,
+    base_url="https://api.cerebras.ai/v1",
+    temperature=0
+)
 llm_with_tools = llm.bind_tools(tools)
 
 # System prompts for different modes
-EXAM_MODE_PROMPT = """You are a strict exam conductor conducting a formal examination via voice. Your role is to:
+EXAM_MODE_PROMPT = """You are a strict exam conductor conducting a formal examination via voice.
 
 **STRICT RULES:**
-1. **NO DISCUSSIONS** - Do not engage in explanations, hints, or teaching during the exam
-2. **NO HELP** - Do not provide hints, clarifications, or guidance on how to answer
-3. **NO FEEDBACK** - Do not comment on answer quality or correctness (just acknowledge receipt)
-4. **FORMAL TONE** - Maintain a professional, neutral, exam-hall atmosphere
+1. **NO DISCUSSIONS** - Do not engage in explanations, hints, or teaching
+2. **NO HELP** - Do not provide hints, clarifications, or guidance
+3. **NO FEEDBACK** - Do not comment on answer quality (just acknowledge receipt)
+4. **FORMAL TONE** - Professional, neutral, exam-hall atmosphere
 
 **YOUR RESPONSIBILITIES:**
-- Present questions clearly using get_current_question()
-- **FOR MCQs:** Read the question text, then read ALL options (A, B, C, D) clearly. Student answers with option letter.
-- **FOR LONG ANSWER:** Read the question, let student explain verbally
-- Provide context ONLY if explicitly requested using get_current_context()
-- Accept answers without evaluation or discussion
-- Move to next question using get_next_question() when student is ready
-- Keep responses brief and procedural
-
-**HANDLING QUESTION TYPES:**
-- When get_current_question() returns question_type="multiple_choice", you MUST read all options aloud
-- Format: "Question [number]: [text]. Your options are: A) [option A], B) [option B], C) [option C], D) [option D]"
-- For long_answer questions, just read the question text
+- Present questions clearly from the CURRENT QUESTION section below
+- **MCQs:** Read question + ALL options (A, B, C, D) clearly
+- **Long Answer:** Read the question, let student explain verbally
+- Accept answers without evaluation
+- Call advance_to_next_question() ONLY when student is ready for next question
+- Keep responses brief
 
 **EXAMPLE INTERACTIONS:**
-❌ WRONG: "That's a good start, but you might want to consider the chemical bonds..."
+❌ WRONG: "That's a good start, but consider the chemical bonds..."
 ✅ CORRECT: "Answer recorded. Ready for the next question?"
 
-❌ WRONG: "Let me explain this concept to help you understand..."
-✅ CORRECT: "This is an exam. I cannot provide explanations during the test."
+❌ WRONG: "Let me explain this concept..."
+✅ CORRECT: "This is an exam. I cannot provide explanations."
 
-❌ WRONG: "You're on the right track! The answer involves..."
-✅ CORRECT: "Thank you. Moving to the next question."
+Exam: {qp_id}, Question {current_index_display} of {total_questions}.
+Duration: {duration_minutes} minutes."""
 
-✅ MCQ Example: "Question 3: What is the chemical formula of water? Your options are: A) H2O, B) CO2, C) NaCl, D) O2"
-✅ CORRECT (when ending): "All questions completed. Your responses have been recorded. Good luck!"
-
-Current QP: {qp_id}, Question {current_index_display} of the exam.
-Remember: This is a formal exam. No teaching, no hints, no discussions."""
-
-LEARN_MODE_PROMPT = """You are an engaging and supportive learning tutor conducting a voice-based study session. Your role is to:
+LEARN_MODE_PROMPT = """You are an engaging learning tutor conducting a voice-based study session.
 
 **LEARNING PHILOSOPHY:**
-1. **ENCOURAGE DISCUSSION** - Engage in deep conversations about the topic
-2. **PROVIDE GUIDANCE** - Offer hints, explanations, and scaffolding
-3. **GIVE FEEDBACK** - Comment on answers, highlight strengths, suggest improvements
-4. **TEACH ACTIVELY** - Explain concepts, provide examples, break down complex ideas
+1. **ENCOURAGE DISCUSSION** - Engage in deep conversations
+2. **PROVIDE GUIDANCE** - Offer hints, explanations, scaffolding
+3. **GIVE FEEDBACK** - Comment on answers, highlight strengths
+4. **TEACH ACTIVELY** - Explain concepts, provide examples
 
 **YOUR RESPONSIBILITIES:**
-- Present questions using get_current_question() as learning prompts
-- Provide context using get_current_context() to enrich understanding
+- Present questions from the CURRENT QUESTION section below
+- Use the syllabus context to guide the student
 - Engage in Socratic dialogue - ask follow-up questions
-- Explain why answers are correct or incorrect (you have access to correct_answer and key_points!)
-- Provide additional examples and analogies
-- Encourage critical thinking and deeper exploration
-- Celebrate progress and provide constructive feedback
-
-**HANDLING QUESTION TYPES:**
-- **FOR MCQs:** Read all options, let student pick. After they answer, reveal if correct and explain WHY.
-  Use the key_points to guide your explanation.
-- **FOR LONG ANSWER:** Discuss the topic, use key_points to assess completeness, guide student to cover missing points.
-
-**USE THE QUESTION METADATA:**
-- **difficulty** (basic/intermediate/advanced): Adjust your explanation depth accordingly
-- **bloom_level** (remember/understand/apply/analyze/evaluate/create): Match your teaching approach
-  - remember/understand: Focus on definitions and concepts
-  - apply/analyze: Give examples and scenarios
-  - evaluate/create: Encourage critical thinking and connections
-- **expected_time**: If student is taking much longer, offer a hint. If faster, praise and probe deeper.
-- **key_points**: Use these to check if student's answer is complete
-- **correct_answer**: Reveal after student attempts (never before!)
+- Explain answers using key_points (after student attempts!)
+- Call advance_to_next_question() when ready to move on
 
 **TEACHING STRATEGIES:**
 - Ask probing questions: "What makes you think that?"
 - Provide hints: "Consider the relationship between X and Y..."
-- Offer explanations: "The reason this works is because..."
-- Break down concepts: "Let's tackle this step by step..."
-- Connect to prior knowledge: "Remember when we discussed...?"
-- Provide encouragement: "Great thinking! Now let's explore..."
+- Use the context to enrich explanations
+- Use key_points to assess answer completeness
 
-**PACING:**
-- Don't rush through questions. Deep understanding > number of questions covered.
-- If student struggles on a "basic" question, simplify your language.
-- If student breezes through "advanced" questions, challenge them with follow-ups.
+Question {current_index_display} of {total_questions}.
+Remember: Deep understanding > number of questions covered."""
 
-**EXAMPLE INTERACTIONS:**
-✅ "Excellent start! The chemical bond part is correct. Now, can you think about what happens to the electrons during this process?"
-✅ "I see your reasoning, but let's explore this together. What do you know about oxidation reactions?"
-✅ "That's a common misconception. Let me explain why: when magnesium burns..."
-✅ "Perfect! You've got it. The key insight here is... Now, want to try a related concept?"
-✅ MCQ: "You picked B, and that's correct! The key reason is [explain using key_points]. Option A was tricky because..."
+GREETING_PROMPT = """You just connected to a new exam/study session. 
 
-Current QP: {qp_id}, Question {current_index_display}.
-Remember: This is a learning session. Encourage, guide, and teach! Use the question metadata to personalize your approach."""
+**YOUR FIRST TURN:**
+- Welcome the student warmly but professionally
+- State: This exam has {total_questions} questions, {duration_minutes} minutes
+- Brief rules: "I'll read each question clearly. Say 'next' when ready to continue."
+- Ask: "Ready to begin when you are!"
+
+**DO NOT present the first question yet.** Wait for student confirmation."""
+
+
+def build_question_context(state: State) -> str:
+    """Build the question context string for prompt injection."""
+    current_index_display = state["current_index"] + 1
+    mode = state.get("mode", "exam")
+    
+    # Session just started - greet first
+    if not state.get("exam_started"):
+        return GREETING_PROMPT.format(
+            total_questions=state.get("total_questions", "?"),
+            duration_minutes=state.get("duration_minutes") or 15
+        )
+    
+    # Question loaded - inject into prompt
+    if state.get("current_question"):
+        q = state["current_question"]
+        
+        if mode == "exam":
+            # Exam mode: context is internal reference only
+            return f"""
+[CURRENT QUESTION - DO NOT call advance_to_next_question unless moving to next]
+Question {current_index_display}: {q['text']}
+Type: {q.get('question_type', 'long_answer')}
+Options: {', '.join(q.get('options', [])) or 'N/A (long answer)'}
+
+[INTERNAL REFERENCE - DO NOT reveal to student]
+Syllabus context: {q.get('context', 'N/A')[:500]}...
+"""
+        else:
+            # Learn mode: use context to help student
+            return f"""
+[CURRENT QUESTION - DO NOT call advance_to_next_question unless moving to next]
+Question {current_index_display}: {q['text']}
+Type: {q.get('question_type', 'long_answer')}
+Options: {', '.join(q.get('options', [])) or 'N/A (long answer)'}
+Difficulty: {q.get('difficulty', 'basic')} | Bloom: {q.get('bloom_level', 'remember')}
+
+[USE TO HELP STUDENT - syllabus context]
+{q.get('context', 'N/A')[:500]}
+
+[REVEAL AFTER STUDENT ATTEMPTS]
+Key Points: {q.get('key_points', [])}
+Correct Answer: {q.get('correct_answer', 'N/A')}
+"""
+    
+    return "[ERROR: No question loaded. This shouldn't happen.]"
+
 
 def agent(state: State) -> State:
     """Reasoning step: LLM decides to answer or call a tool."""
     
-    # Human-readable index (1-based)
     current_index_display = state["current_index"] + 1
+    mode = state.get("mode", "exam")
     
-    # Select system prompt based on mode
-    if state.get("mode", "exam") == "exam":
-        system_prompt = EXAM_MODE_PROMPT.format(
+    # Build the question context
+    question_context = build_question_context(state)
+    
+    # Select base system prompt based on mode
+    if mode == "exam":
+        base_prompt = EXAM_MODE_PROMPT.format(
             qp_id=state["qp_id"],
-            current_index_display=current_index_display
+            current_index_display=current_index_display,
+            total_questions=state.get("total_questions", "?"),
+            duration_minutes=state.get("duration_minutes") or 15
         )
-    else:  # learn mode
-        system_prompt = LEARN_MODE_PROMPT.format(
-            qp_id=state["qp_id"],
-            current_index_display=current_index_display
+    else:
+        base_prompt = LEARN_MODE_PROMPT.format(
+            current_index_display=current_index_display,
+            total_questions=state.get("total_questions", "?")
         )
     
-    system_message = SystemMessage(content=system_prompt)
+    # Combine base prompt + question context
+    full_prompt = base_prompt + "\n\n" + question_context
+    
+    system_message = SystemMessage(content=full_prompt)
     messages = [system_message] + state["messages"]
 
-    response = llm_with_tools.invoke(messages)  # returns an AIMessage
+    response = llm_with_tools.invoke(messages)
     state["messages"].append(response)
+    
+    # After greeting, mark exam as started
+    if not state.get("exam_started") and len(state["messages"]) > 2:
+        state["exam_started"] = True
+    
     return state
 
 
 # ToolNode (executes tool calls)
 tool_node = ToolNode(tools)
 
+def process_tool_response(state: State) -> State:
+    """Process tool responses and update state accordingly."""
+    messages = state["messages"]
+    
+    # Look for tool response in recent messages
+    for msg in reversed(messages[-3:]):  # Check last few messages
+        if hasattr(msg, 'content') and isinstance(msg.content, str):
+            try:
+                import json
+                # Try to parse if it looks like JSON
+                if msg.content.startswith('{'):
+                    response = json.loads(msg.content)
+                    
+                    if response.get("done"):
+                        # Exam complete - trigger cleanup
+                        state["current_question"] = None
+                        print(f"🎯 Exam complete signal received")
+                    elif response.get("question"):
+                        # Update state with new question
+                        state["current_index"] = response["new_index"]
+                        state["current_question"] = response["question"]
+                        print(f"📝 Advanced to question {response['new_index'] + 1}")
+            except (json.JSONDecodeError, TypeError):
+                pass
+    
+    return state
+
 def cleanup_exam(state: State) -> State:
-    """Delete QP from Redis when exam is complete."""
+    """Trigger correction task instead of immediate cleanup."""
+    from tasks.correction import trigger_correction
+    
     qp_id = state["qp_id"]
-    qp_key = f"qp:{qp_id}:questions"
+    thread_id = state["thread_id"]
+    user_id = state.get("user_id", "unknown")
+    exam_id = f"exam_{qp_id}_{int(time.time())}"
     
     try:
-        deleted = r.delete(qp_key)
-        if deleted:
-            print(f"✅ Exam complete. Deleted QP from Redis: {qp_key}")
-        else:
-            print(f"⚠️ QP already removed or not found: {qp_key}")
+        # Trigger async correction (Celery) - QP cleanup happens there
+        task_id = trigger_correction(
+            exam_id=exam_id,
+            qp_id=qp_id,
+            user_id=user_id,
+            thread_id=thread_id
+        )
+        print(f"📝 Correction triggered: task_id={task_id}")
+        
+        # Store task_id in state for tracking (optional)
+        state["correction_task_id"] = task_id
+        
     except Exception as e:
-        print(f"❌ Error cleaning up: {e}")
+        print(f"⚠️ Failed to trigger correction: {e}")
+        # Fallback: delete QP anyway to avoid orphans
+        r.delete(f"qp:{qp_id}:questions")
     
     return state
 
@@ -247,23 +338,29 @@ def should_continue(state: State) -> Literal["tools", "check_completion", "__end
     return "check_completion"
 
 def check_if_exam_complete(state: State) -> Literal["cleanup", "__end__"]:
-    """Check if all questions have been answered."""
-    qp_id = state["qp_id"]
-    current_index = state["current_index"]
+    """Check if all questions have been answered using state (no Redis call)."""
+    current_index = state.get("current_index", 0)
+    total_questions = state.get("total_questions")
     
+    # If we have total_questions in state, use it (no Redis call needed)
+    if total_questions is not None:
+        if current_index >= total_questions - 1 and state.get("current_question") is None:
+            # current_question is None means tool returned done=True
+            print(f"🎯 Exam complete: {current_index + 1}/{total_questions} questions answered")
+            return "cleanup"
+        return "__end__"
+    
+    # Fallback to Redis check (shouldn't happen with preload)
+    qp_id = state["qp_id"]
     try:
-        # Get total number of questions
         qp_key = f"qp:{qp_id}:questions"
         questions = r.json().get(qp_key)
         
         if questions and isinstance(questions, list):
-            total_questions = len(questions)
-            # If current_index is the last question (0-indexed)
-            if current_index >= total_questions - 1:
-                print(f"🎯 Exam complete: {current_index + 1}/{total_questions} questions answered")
+            if current_index >= len(questions) - 1:
+                print(f"🎯 Exam complete (fallback): {current_index + 1}/{len(questions)} questions")
                 return "cleanup"
         
-        # Not complete yet, continue conversation
         return "__end__"
     except Exception as e:
         print(f"❌ Error checking completion: {e}")
@@ -273,6 +370,7 @@ def check_if_exam_complete(state: State) -> Literal["cleanup", "__end__"]:
 workflow = StateGraph(State)
 workflow.add_node("agent", agent)
 workflow.add_node("tools", tool_node)
+workflow.add_node("process_response", process_tool_response)  # Process tool output
 workflow.add_node("check_completion", lambda state: state)  # Pass-through node for routing
 workflow.add_node("cleanup", cleanup_exam)
 
@@ -282,8 +380,9 @@ workflow.add_conditional_edges("agent", should_continue)
 # Add conditional routing to check if exam is complete
 workflow.add_conditional_edges("check_completion", check_if_exam_complete)
 
-# After tools, always go back to agent
-workflow.add_edge("tools", "agent")
+# After tools, process the response then go back to agent
+workflow.add_edge("tools", "process_response")
+workflow.add_edge("process_response", "agent")
 
 # After cleanup, end
 workflow.add_edge("cleanup", "__end__")
@@ -306,26 +405,38 @@ if __name__ == "__main__":
     print(f"🎯 Running in {mode.upper()} mode")
     print(f"{'='*60}\n")
     
+    # Pre-load first question (optimization - no tool call needed)
+    qp_id = "qp1"
+    first_question, total_questions = preload_first_question(qp_id)
+    
+    if not first_question:
+        print("❌ Could not load question paper. Make sure QP is in Redis.")
+        exit(1)
+    
+    print(f"📋 Loaded QP with {total_questions} questions")
+    
     if mode == "exam":
         print("📋 EXAM MODE: Strict, formal, no discussions")
-        example_message = "Can you help me understand this question better?"
     else:
         print("📚 LEARN MODE: Interactive, supportive, full discussion")
-        example_message = "I'm not sure about this answer. Can you explain?"
     
-    # Example state (pretend qp_id=qp1 already loaded into Redis)
+    # Initialize state with pre-loaded question (agent-first greeting)
     state = State(
-        messages=[HumanMessage(content=example_message)],
+        messages=[SystemMessage(content="[SESSION_START]")],  # Trigger greeting
         thread_id=fixed_thread_id,
-        qp_id="qp1",
+        qp_id=qp_id,
         current_index=0,
         mode=mode,
+        current_question=first_question,  # Pre-loaded!
+        total_questions=total_questions,
+        exam_started=False,
+        duration_minutes=15,
     )
 
     # Configuration with thread_id for checkpointer
     config = {"configurable": {"thread_id": fixed_thread_id}}
     
-    print(f"Continuing {mode} session with thread ID: {fixed_thread_id}")
+    print(f"Starting new {mode} session with thread ID: {fixed_thread_id}")
     
     # Start timing
     start_time = time.time()

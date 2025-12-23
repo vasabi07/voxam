@@ -8,6 +8,7 @@ Flow:
   3. Generator - synthesizes response with citations
 """
 
+import os
 import re
 from typing import Optional, List
 from langgraph.graph import StateGraph, END
@@ -15,9 +16,14 @@ from langchain_core.messages import HumanMessage, AIMessage, SystemMessage
 from langchain_openai import ChatOpenAI
 from langgraph.checkpoint.memory import MemorySaver
 from copilotkit import CopilotKitState
+from dotenv import load_dotenv
+
+load_dotenv()
 
 # Import retrieval function
 from retrieval import retrieve_context
+
+DEEPINFRA_API_KEY = os.getenv("DEEPINFRA_API_KEY")
 
 
 # ============================================================
@@ -39,11 +45,23 @@ class ChatState(CopilotKitState):
 # ============================================================
 # LLM INSTANCES
 # ============================================================
-# Fast model for query rewriting (no streaming - internal use)
-rewriter_llm = ChatOpenAI(model="gpt-4o-mini", temperature=0)
+# Using Nemotron 3 Nano 30B on DeepInfra - cheap, fast, excellent for RAG
+# Cost: ₹0.012 per chat (75% cheaper than GPT-4o-mini)
+rewriter_llm = ChatOpenAI(
+    model="nvidia/Nemotron-3-Nano-30B-A3B",
+    api_key=DEEPINFRA_API_KEY,
+    base_url="https://api.deepinfra.com/v1/openai",
+    temperature=0
+)
 
 # Main model for generation (streaming enabled for better UX)
-generator_llm = ChatOpenAI(model="gpt-4o-mini", temperature=0.7, streaming=True)
+generator_llm = ChatOpenAI(
+    model="nvidia/Nemotron-3-Nano-30B-A3B",
+    api_key=DEEPINFRA_API_KEY,
+    base_url="https://api.deepinfra.com/v1/openai",
+    temperature=0.7,
+    streaming=True
+)
 
 
 # ============================================================

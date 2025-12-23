@@ -107,7 +107,8 @@ qp_workflow = create_qp_workflow()
 
 class IngestRequest(BaseModel):
     file_key: str  
-    
+    document_id: str  # Add document_id from frontend
+
 
 @app.get("/")
 async def root():
@@ -116,23 +117,76 @@ async def root():
 
 @app.post("/ingest")
 async def ingest(request_data: IngestRequest, request: Request):
-    # Get user from request state if authentication is enabled
+    """
+    Start document ingestion as a background task.
+    Returns task_id immediately for progress tracking.
+    """
+    from tasks.ingestion import ingest_document
+    
+    # Get user from request state
     user = getattr(request.state, "user", None)
-    user_id = user.get("sub") if user else None
+    user_id = user.get("sub") if user else "anonymous"
     
     file_key = request_data.file_key
+    document_id = request_data.document_id
+    
     if not file_key:
-        return {"error": "file_key is required in the request body."}
-    filename = await get_file(file_key) 
-    if not filename:
-        return {"error": "Failed to retrieve the file."}
-    return {"message": "File retrieved successfully.", "file": filename, "user_id": user_id}
+        return {"error": "file_key is required"}
+    if not document_id:
+        return {"error": "document_id is required"}
+    
+    # Queue the task
+    task = ingest_document.delay(document_id, user_id, file_key)
+    
+    return {
+        "success": True,
+        "task_id": task.id,
+        "document_id": document_id,
+        "status": "queued",
+        "message": "Ingestion started. Poll /task/{task_id}/status for progress."
+    }
+
+
+@app.get("/task/{task_id}/status")
+async def get_task_status(task_id: str):
+    """
+    Get the status of a background task (ingestion or correction).
+    """
+    from redis import Redis
+    from celery.result import AsyncResult
+    from celery_app import celery_app
+    
+    REDIS_URI = os.getenv("REDIS_URI", "redis://localhost:6379/0")
+    r = Redis.from_url(REDIS_URI, decode_responses=True)
+    
+    # Check Redis for progress info
+    progress_info = r.hgetall(f"task:{task_id}")
+    
+    # Check Celery for task state
+    result = AsyncResult(task_id, app=celery_app)
+    
+    response = {
+        "task_id": task_id,
+        "celery_state": result.state,
+    }
+    
+    if progress_info:
+        response["progress"] = int(progress_info.get("progress", 0))
+        response["status"] = progress_info.get("status", "unknown")
+        response["details"] = progress_info.get("details", "")
+    
+    if result.state == "SUCCESS":
+        response["result"] = result.result
+    elif result.state == "FAILURE":
+        response["error"] = str(result.result)
+    
+    return response
 
 
 def create_livekit_token(identity: str, room_name: str) -> str:
     """
-    Create a LiveKit access token for a participant
-    Room is automatically created when first participant joins
+    Create a LiveKit access token for a participant.
+    Room is automatically created when first participant joins.
     """
     token = (
         api.AccessToken(LIVEKIT_API_KEY, LIVEKIT_API_SECRET)

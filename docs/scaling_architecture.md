@@ -109,7 +109,8 @@
 │      (8 vCPU, 32GB RAM)             │
 │        ~50-80 concurrent            │
 └─────────────────────────────────────┘
-          Cost: €47/month
+└─────────────────────────────────────┘
+          Cost: ~₹2,200/mo (€24.49)
 ```
 
 **Changes:**
@@ -128,8 +129,7 @@
                  │                 │
     ┌────────────▼─────┐  ┌────────▼────────┐
     │   API Server 1   │  │   API Server 2   │
-    │   (CCX23)        │  │   (CCX23)        │
-    │   Voice Sessions │  │   Voice Sessions │
+    │   (CCX23)        │  │   Voice Sessions │
     └──────────────────┘  └──────────────────┘
                  │                 │
                  └────────┬────────┘
@@ -137,6 +137,11 @@
               ┌───────────▼───────────┐
               │    Managed Redis      │
               │    (shared state)     │
+              └───────────────────────┘
+                          │
+              ┌───────────▼───────────┐
+              │    Self-Hosted Neo4j  │
+              │    (In-VPS / Docker)  │
               └───────────────────────┘
 ```
 
@@ -193,9 +198,9 @@
 
 | Scale | Action | Monthly Cost |
 |-------|--------|--------------|
-| **0-100** | Keep current setup | €36 |
-| **100-500** | Upgrade to CCX33 | €70 |
-| **500-1000** | Add 2nd server + LB | €100 |
+| **0-100** | CCX23 (DBs + API) | ~₹2,200 |
+| **100-500** | Add Vercel/Supabase Pro | ~₹6,000 |
+| **500-1000** | Add 2nd server + LB | ~₹10,500 |
 | **1000-2500** | 3-4 servers + managed Redis | €200 |
 | **2500+** | Consider Kubernetes | €300+ |
 
@@ -209,5 +214,30 @@
 | Total users supported | ~200-400 | Peak concurrency |
 | First scaling point | ~500 users | Server upgrade |
 | Horizontal scaling point | ~1000 users | Load balancer |
+| **GPU Switch Point** | **~200-500 Paid MAU**| **Self-host Orpheus 3B** |
 
-**You're good for launch and first 100-500 users. Scale when you see CPU > 70%.**
+---
+
+## Future: GPU Inference Scaling (Self-Hosted TTS)
+
+When you reach **~200-500 paid MAU**, switching from Deepgram/Cartesia to self-hosted **Orpheus 3B** becomes highly profitable.
+
+### GPU Capacity Estimates (Orpheus 3B)
+
+| Hardware | Monthly Cost | Concurrent Sessions | MAU Capacity |
+| :--- | :--- | :--- | :--- |
+| **RTX 4090 / L4** | ~$100 - $120 | ~15 - 20 | **750 - 1,500** |
+| **2x RTX 4090** | ~$220 | ~30 - 40 | **1,500 - 3,000** |
+
+*Calculation: 90-min session with 45-min TTS. At 10x real-time speed, one GPU is actually "busy" for only 4.5 minutes per hour-long session.*
+
+### The "Switch" Economics (1,000 Users)
+
+| Metric | Deepgram Aura 2 ($30) | Self-Hosted Orpheus (L4) |
+| :--- | :--- | :--- |
+| **Monthly Cost** | ~$1,080 (₹91k) | **~$120 (₹10k)** |
+| **% of Revenue** | ~18-20% | **~2%** |
+| **Net Savings** | $0 | **~$960/month** |
+
+> [!TIP]
+> **Conclusion:** Start with Deepgram Aura 2 (credits + speed). Aim to switch to your own GPU at **150+ paid MAU** to instantly boost margins by ~15-20%.

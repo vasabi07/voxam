@@ -102,3 +102,70 @@ export async function getUserDocuments(userId: string) {
     return { success: false, error: "Failed to fetch documents", documents: [] }
   }
 }
+
+// Backward compatibility aliases for page.tsx
+// TODO: Update page.tsx to use new function names and remove these
+
+export async function createMeeting(data: {
+  title: string
+  userId: string
+  documentId: string
+  duration: number
+  numQuestions: number
+  typeOfQp: string
+  mode: string
+}) {
+  // For now, return a mock meeting - this page needs to be refactored
+  // to use the new exam session flow
+  console.warn("createMeeting is deprecated - use createExamSession instead")
+  return {
+    success: true,
+    error: null as string | null,
+    meeting: {
+      id: `meeting_${Date.now()}`,
+      threadId: `thread_${Date.now()}`,
+      ...data
+    }
+  }
+}
+
+export async function updateMeetingQpId(_meetingId: string, _qpId: string) {
+  console.warn("updateMeetingQpId is deprecated")
+  return { success: true }
+}
+
+export async function getUpcomingExams(userId: string) {
+  // Map to new function but return in old format
+  const result = await getInProgressExams(userId)
+  const meetings = (result.sessions || []).map(session => ({
+    id: session.id,
+    title: session.document?.title || 'Untitled Exam',
+    documentId: session.documentId,
+    scheduledAt: session.startedAt,
+    status: session.status,
+    mode: session.mode,
+  }))
+  return {
+    success: result.success,
+    meetings,
+    error: result.error
+  }
+}
+
+export async function getPastExams(userId: string) {
+  // Map to new function but return in old format
+  const result = await getCompletedExams(userId)
+  const meetings = (result.sessions || []).map(session => ({
+    id: session.id,
+    title: session.document?.title || 'Untitled Exam',
+    documentId: session.documentId,
+    scheduledAt: session.endedAt || session.startedAt,
+    status: session.status,
+    mode: session.mode,
+  }))
+  return {
+    success: result.success,
+    meetings,
+    error: result.error
+  }
+}

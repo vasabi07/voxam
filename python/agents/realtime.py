@@ -49,8 +49,8 @@ async def generate_and_stream_tts(text: str, audio_source: rtc.AudioSource):
         
         synthesis_input = texttospeech.SynthesisInput(text=text)
         voice = texttospeech.VoiceSelectionParams(
-            name="en-US-Chirp3-HD-Achird",
-            language_code="en-US",
+            name="en-IN-Neural2-B",  # Indian English male voice (Professor Venkat)
+            language_code="en-IN",
         )
         
         # Synthesize speech
