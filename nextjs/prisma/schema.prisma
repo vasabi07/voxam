@@ -20,32 +20,25 @@ model User {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  // Subscription (merged from separate table)
-  razorpayCustomerId     String?  @unique
-  razorpaySubscriptionId String?  @unique
-  subscriptionStatus     SubscriptionStatus @default(FREE)
-  currentPlanId          String?
-  currentPeriodStart     DateTime?
-  currentPeriodEnd       DateTime?
-
   // Usage (merged from UserCredits table)
   voiceMinutesUsed   Int @default(0)
   chatMessagesUsed   Int @default(0)
   pagesUsed          Int @default(0)
   voiceMinutesLimit  Int @default(15)   // Free tier: 1 short exam
-  chatMessagesLimit  Int @default(50)   // Free tier default
+  chatMessagesLimit  Int @default(100)  // Free tier default (100 for testing)
   pagesLimit         Int @default(3)    // Free tier: 1 small doc
-  cycleResetDate     DateTime?
+
+  // Geo-based settings
+  region             String @default("india")  // "india" or "global" - affects pricing & TTS
 
   // Relations
   documents    Document[]
+  questionPapers QuestionPaper[]
   examSessions ExamSession[]
+  learnSessions LearnSession[]
   transactions Transaction[]
 
-  currentPlan SubscriptionPlan? @relation(fields: [currentPlanId], references: [id])
-
   @@index([email])
-  @@index([razorpaySubscriptionId])
 }
 
 // ========== DOCUMENTS ==========
@@ -62,15 +55,19 @@ model Document {
   taskId    String?        // Celery task ID for processing
   createdAt DateTime       @default(now())
   updatedAt DateTime       @updatedAt
+  archivedAt DateTime?     // Soft delete - null means active
 
   // Relations
   userId String
   user   User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   examSessions ExamSession[]
+  learnSessions LearnSession[]
+  questionPapers QuestionPaper[]
 
   @@index([userId])
   @@index([status])
+  @@index([archivedAt])
 }
 
 // ========== EXAM SESSIONS ==========
@@ -78,32 +75,35 @@ model Document {
 model ExamSession {
   id        String     @id @default(uuid())
   threadId  String     @unique // LangGraph thread ID
-  qpId      String     // Redis QP key
   mode      ExamMode   @default(EXAM)
-  status    ExamStatus @default(IN_PROGRESS)
-  
-  // Exam settings
-  duration     Int      // Duration in minutes
-  numQuestions Int
-  typeOfQp     String   @default("regular") // regular, midterm, final, quiz
-  
+  status    ExamStatus @default(SCHEDULED)
+
   // Timestamps
-  startedAt   DateTime  @default(now())
+  startedAt   DateTime?
   endedAt     DateTime?
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
 
+  // Voice minutes tracking (for billing actual connected time)
+  totalConnectedSeconds Int       @default(0)  // Cumulative connected time
+  lastConnectedAt       DateTime?              // When user last connected to LiveKit
+  lastDisconnectedAt    DateTime?              // When user last disconnected
+
   // Relations
   userId     String
   user       User @relation(fields: [userId], references: [id], onDelete: Cascade)
-  
+
   documentId String
   document   Document @relation(fields: [documentId], references: [id])
+
+  questionPaperId String
+  questionPaper   QuestionPaper @relation(fields: [questionPaperId], references: [id])
 
   report CorrectionReport?
 
   @@index([userId])
   @@index([documentId])
+  @@index([questionPaperId])
   @@index([threadId])
   @@index([status])
 }
@@ -138,28 +138,52 @@ model CorrectionReport {
   examSession   ExamSession @relation(fields: [examSessionId], references: [id], onDelete: Cascade)
 }
 
-// ========== SUBSCRIPTION PLANS ==========
+// ========== LEARN SESSIONS ==========
 
-model SubscriptionPlan {
-  id             String  @id @default(uuid())
-  name           String  @unique // starter, pro, unlimited
-  displayName    String  // "Starter Plan"
-  razorpayPlanId String  @unique // plan_xxx from Razorpay
-  priceInr       Int     // 399, 699, 999 (in rupees, not paise)
-  
-  // Limits per billing cycle
-  voiceMinutes  Int
-  chatMessages  Int
-  pages         Int  // Pages per month
-  
-  // Status
-  isActive Boolean @default(true)
-  
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+model LearnSession {
+  id        String   @id @default(uuid())
+  threadId  String   @unique  // LangGraph thread ID
+  lpId      String   // Learn Pack ID (Redis key)
+
+  // Summary (LLM-generated on cleanup)
+  title     String            // "Introduction to Photosynthesis"
+  summary   String   @db.Text // 2-3 sentence summary
+
+  // Topic Coverage
+  topicsCovered      String[]
+  topicsPlanned      Int       @default(0)
+  topicsCompleted    Int       @default(0)
+
+  // Performance
+  overallUnderstanding Int     @default(0) // 0-100
+  strengths           String[]
+  areasToReview       String[]
+
+  // Full report data
+  summaryJson Json?
+
+  // Meta
+  messageCount Int      @default(0)
+  status       LearnSessionStatus @default(ACTIVE)
+  createdAt    DateTime @default(now())
+  completedAt  DateTime?
 
   // Relations
-  users User[]
+  userId String
+  user   User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  documentId String?
+  document   Document? @relation(fields: [documentId], references: [id])
+
+  @@index([userId])
+  @@index([lpId])
+  @@index([status])
+}
+
+enum LearnSessionStatus {
+  ACTIVE     // Session in progress
+  COMPLETED  // Session finished normally
+  ABANDONED  // User left without finishing
 }
 
 // ========== TRANSACTIONS ==========
@@ -169,7 +193,6 @@ model Transaction {
   
   // Razorpay IDs
   razorpayPaymentId String?           @unique
-  razorpayInvoiceId String?
   razorpayOrderId   String?
   
   // Amount
@@ -197,16 +220,6 @@ model Transaction {
 
 // ========== ENUMS ==========
 
-enum SubscriptionStatus {
-  FREE       // No subscription
-  CREATED    // Subscription created, awaiting payment
-  ACTIVE     // Subscription active
-  PENDING    // Payment failed, retrying
-  HALTED     // Payment failed multiple times
-  CANCELLED  // User cancelled
-  EXPIRED    // Past end date
-}
-
 enum DocumentStatus {
   PENDING    // Uploaded, not processed
   PROCESSING // Currently being processed
@@ -220,6 +233,7 @@ enum ExamMode {
 }
 
 enum ExamStatus {
+  SCHEDULED   // QP created, waiting to start
   IN_PROGRESS // Exam ongoing
   COMPLETED   // Exam finished
   ABANDONED   // User left without finishing
@@ -233,10 +247,48 @@ enum TransactionStatus {
 }
 
 enum TransactionType {
-  SUBSCRIPTION_CREATED  // First subscription payment
-  SUBSCRIPTION_RENEWED  // Monthly renewal
-  SUBSCRIPTION_UPGRADED // Plan upgrade
-  PACK_PURCHASE         // One-time pack purchase
-  TOP_UP                // Extra credits purchase
-  REFUND                // Refund issued
+  PACK_PURCHASE  // One-time pack purchase
+  TOP_UP         // Extra credits purchase
+  REFUND         // Refund issued
+}
+
+enum QPStatus {
+  PENDING
+  PROCESSING
+  READY
+  FAILED
+}
+
+model QuestionPaper {
+  id        String   @id @default(uuid())
+  status    QPStatus @default(PENDING)
+  
+  // Params from qp_agent.py
+  duration     Int
+  numQuestions Int      @default(10)
+  typeOfQp     String   @default("regular")
+  
+  // Configuration (Arrays stored as JSON/String[] since Postgres supports it)
+  difficulty    String[] 
+  bloomLevel    String[]
+  questionTypes String[]
+  
+  // Output Content
+  questions    Json?    // Full QP stored permanently here
+  
+  // Timestamps
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  // Relations
+  documentId String
+  document   Document @relation(fields: [documentId], references: [id])
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  examSessions ExamSession[]
+
+  @@index([userId])
+  @@index([documentId])
+  @@index([status])
 }

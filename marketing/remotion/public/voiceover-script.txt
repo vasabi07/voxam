@@ -1,0 +1,52 @@
+# VOXAM Instagram Ad Voiceover Script
+# Duration: 38 seconds | Pacing: 0.9x speed (slightly slower than normal)
+# Voice: Warm, tutorish, calm (not salesy)
+
+================================================================================
+PLAIN TEXT VERSION (Copy for TTS)
+================================================================================
+
+Turn your notes... into exam practice.
+
+Introducing VOXAM.
+
+Upload any study material. PDFs, textbooks, or notes.
+
+Just ask... to create an exam. VOXAM generates questions instantly.
+
+Practice with your voice. Speak naturally... AI listens and responds.
+
+Get instant feedback... and know exactly where to improve.
+
+Try free at voxam.in
+
+================================================================================
+TIMING BREAKDOWN
+================================================================================
+
+TIMESTAMP    VISUAL CUE                    VOICEOVER TEXT
+------------------------------------------------------------------------------
+[0:00.0]     Hook: "Turn your notes"       "Turn your notes..."
+[0:02.0]     [visual transition]           [PAUSE 1s]
+[0:03.0]     Hook: "Into exam practice"    "...into exam practice."
+[0:05.0]     LogoReveal starts             [PAUSE 1.5s]
+[0:06.5]     Logo visible                  "Introducing VOXAM."
+[0:09.0]     DocumentShowcase starts       [PAUSE 0.5s]
+[0:09.5]     Cards appear                  "Upload any study material."
+[0:12.0]     Cards cycling                 "PDFs, textbooks, or notes."
+[0:15.0]     ChatDemo starts               [PAUSE 0.5s]
+[0:15.5]     Input visible                 "Just ask..."
+[0:17.0]     Typing animation              [PAUSE 0.5s]
+[0:17.5]     Continue                      "...to create an exam."
+[0:20.0]     AI Response appears           "VOXAM generates questions instantly."
+[0:22.0]     ExamMode starts               [PAUSE 0.5s]
+[0:22.5]     Exam card visible             "Practice with your voice."
+[0:25.0]     Waveform animating            "Speak naturally..."
+[0:27.0]     Waveform active               "...AI listens and responds."
+[0:29.0]     Results starts                [PAUSE 0.5s]
+[0:29.5]     Score appears                 "Get instant feedback..."
+[0:32.0]     Feedback card visible         [PAUSE 1s - let them read]
+[0:33.0]     Hold on feedback              "...and know exactly where to improve."
+[0:35.0]     CTA starts                    [PAUSE 0.5s]
+[0:35.5]     Button visible                "Try free at voxam.in"
+[0:38.0]     [END]                         [SILENCE to end]

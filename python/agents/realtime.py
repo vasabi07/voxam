@@ -4,16 +4,16 @@ import time
 import re
 from livekit import rtc
 from dotenv import load_dotenv
-from deepgram import AsyncDeepgramClient
-from deepgram.core.events import EventType
-from deepgram.extensions.types.sockets import ListenV2SocketClientResponse
+from deepgram import DeepgramClient, AsyncDeepgramClient
+from deepgram.core.events import EventType  # SDK v5 correct import
 from google.cloud import texttospeech
-from agents.exam_agent import graph as exam_agent_graph, State as ExamState
+from agents.exam_agent import graph as exam_agent_graph, State as ExamState, preload_first_question
 from langchain_core.messages import HumanMessage
 from concurrent.futures import ThreadPoolExecutor
 
-# Load environment variables
-load_dotenv(dotenv_path=".env.local", override=False)
+# Load environment variables (load .env first, then .env.local can override)
+load_dotenv(dotenv_path=".env", override=False)
+load_dotenv(dotenv_path=".env.local", override=True)
 
 # LiveKit configuration
 LIVEKIT_URL = os.getenv("LIVEKIT_URL")
@@ -27,55 +27,83 @@ if not LIVEKIT_URL:
 if not DEEPGRAM_API_KEY:
     raise ValueError("Missing DEEPGRAM_API_KEY. Please check your .env.local file.")
 
-# Initialize Google Cloud TTS client
+# Initialize Google Cloud TTS client (for India region)
 tts_client = texttospeech.TextToSpeechClient()
 
+# Initialize Deepgram client (for global/TTS) - SDK v5 requires keyword arg
+dg_tts_client = AsyncDeepgramClient(api_key=DEEPGRAM_API_KEY)
 
-async def generate_and_stream_tts(text: str, audio_source: rtc.AudioSource):
+
+async def generate_and_stream_tts(text: str, audio_source: rtc.AudioSource, region: str = "india"):
     """
-    Generate TTS audio using Google Cloud TTS and stream to LiveKit
-    LiveKit handles all audio format conversions automatically
+    Generate TTS audio and stream to LiveKit.
+    Uses Google Neural2 for India, Deepgram Aura for global users.
+    
+    Args:
+        text: Text to convert to speech
+        audio_source: LiveKit audio source to stream to
+        region: "india" for Google Neural2, "global" for Deepgram Aura
     """
     try:
         start_time = time.time()
-        print(f"🎵 Generating TTS for: '{text[:80]}...'")
+        print(f"🎵 Generating TTS [{region.upper()}] for: '{text[:80]}...'")
         
-        # Configure synthesis - use 48kHz to match LiveKit's default
-        audio_config = texttospeech.AudioConfig(
-            audio_encoding=texttospeech.AudioEncoding.LINEAR16,
-            sample_rate_hertz=48000,  # Match LiveKit's sample rate
-            speaking_rate=1.0,
-        )
+        if region == "india":
+            # Google Cloud TTS - Indian English voice
+            audio_config = texttospeech.AudioConfig(
+                audio_encoding=texttospeech.AudioEncoding.LINEAR16,
+                sample_rate_hertz=48000,
+                speaking_rate=1.0,
+            )
+            
+            synthesis_input = texttospeech.SynthesisInput(text=text)
+            voice = texttospeech.VoiceSelectionParams(
+                name="en-IN-Neural2-B",  # Indian English male voice
+                language_code="en-IN",
+            )
+            
+            response = tts_client.synthesize_speech(
+                input=synthesis_input,
+                voice=voice,
+                audio_config=audio_config
+            )
+            audio_data = response.audio_content
+            sample_rate = 48000
+            
+        else:
+            # Deepgram Aura - Global English voice (faster, cheaper for intl)
+            options = {
+                "model": "aura-orion-en",  # Orion is clear and professional
+                "encoding": "linear16",
+                "sample_rate": 48000,
+            }
+            
+            response = await dg_tts_client.speak.v("1").stream(
+                {"text": text},
+                options
+            )
+            
+            # Collect all audio chunks
+            audio_chunks = []
+            async for chunk in response.stream:
+                if chunk:
+                    audio_chunks.append(chunk)
+            audio_data = b"".join(audio_chunks)
+            sample_rate = 48000
         
-        synthesis_input = texttospeech.SynthesisInput(text=text)
-        voice = texttospeech.VoiceSelectionParams(
-            name="en-IN-Neural2-B",  # Indian English male voice (Professor Venkat)
-            language_code="en-IN",
-        )
-        
-        # Synthesize speech
-        response = tts_client.synthesize_speech(
-            input=synthesis_input,
-            voice=voice,
-            audio_config=audio_config
-        )
-        
-        audio_data = response.audio_content
         generation_time = time.time() - start_time
         
-        # Create a single AudioFrame with all the audio data
-        # LiveKit handles chunking and streaming internally
+        # Create AudioFrame and stream to LiveKit
         frame = rtc.AudioFrame(
             data=audio_data,
-            sample_rate=48000,
+            sample_rate=sample_rate,
             num_channels=1,
-            samples_per_channel=len(audio_data) // 2  # 2 bytes per sample (int16)
+            samples_per_channel=len(audio_data) // 2
         )
         
-        # Capture the frame - LiveKit handles the rest
         await audio_source.capture_frame(frame)
         
-        duration_seconds = len(audio_data) / (48000 * 2)
+        duration_seconds = len(audio_data) / (sample_rate * 2)
         print(f"✅ TTS generated: {duration_seconds:.2f}s (in {generation_time:.2f}s)")
         return True
         
@@ -86,10 +114,10 @@ async def generate_and_stream_tts(text: str, audio_source: rtc.AudioSource):
         return False
 
 
-async def start_exam_agent(room_name: str, token: str, qp_id: str, thread_id: str, mode: str = "exam"):
+async def start_exam_agent(room_name: str, token: str, qp_id: str, thread_id: str, mode: str = "exam", region: str = "india"):
     """
     Agent that joins a LiveKit room, listens to student audio via Deepgram Flux STT,
-    processes with LangGraph exam agent, and responds with Google TTS
+    processes with LangGraph exam agent, and responds with TTS
     
     Args:
         room_name: LiveKit room name
@@ -97,6 +125,7 @@ async def start_exam_agent(room_name: str, token: str, qp_id: str, thread_id: st
         qp_id: Question paper ID
         thread_id: Thread ID for conversation persistence
         mode: "exam" or "learn"
+        region: "india" or "global" for geo-based TTS voice selection
     """
     
     # Create and connect to room
@@ -110,7 +139,7 @@ async def start_exam_agent(room_name: str, token: str, qp_id: str, thread_id: st
     await room.connect(LIVEKIT_URL, token)
     print(f"🤖 Agent joined room: {room_name}")
     print(f"📝 QP ID: {qp_id}, Thread ID: {thread_id}")
-    print(f"🎯 Mode: {mode.upper()}")
+    print(f"🎯 Mode: {mode.upper()}, Region: {region.upper()}")
     
     # Create audio source and track for TTS output
     audio_source = rtc.AudioSource(48000, 1)  # 48kHz, mono
@@ -121,6 +150,10 @@ async def start_exam_agent(room_name: str, token: str, qp_id: str, thread_id: st
     # Transcript buffer for accumulating final results
     transcript_buffer = []
     
+    # Track if this is the first invocation (for preloading questions)
+    first_invocation = True
+    cached_question = None
+    cached_total = None
     async def process_complete_transcript(full_transcript: str):
         """Process complete user utterance with the exam agent and generate TTS response"""
         try:
@@ -133,13 +166,27 @@ async def start_exam_agent(room_name: str, token: str, qp_id: str, thread_id: st
             print(f"📝 Student said: {full_transcript}")
             print(f"{'='*60}\n")
             
-            # Create exam state
+            # Create exam state - first time preload questions, otherwise just new message
+            nonlocal first_invocation, cached_question, cached_total
+            
+            if first_invocation:
+                # Preload first question from Redis
+                cached_question, cached_total = preload_first_question(qp_id)
+                if cached_question:
+                    print(f"📚 Preloaded first question ({cached_total} total)")
+                else:
+                    print(f"⚠️ Failed to preload questions for QP: {qp_id}")
+                first_invocation = False
+            
             exam_state = ExamState(
                 messages=[HumanMessage(content=full_transcript)],
                 thread_id=thread_id,
                 qp_id=qp_id,
                 current_index=0,
-                mode=mode
+                mode=mode,
+                current_question=cached_question,
+                total_questions=cached_total,
+                exam_started=False if cached_question else True,  # Will greet first, then show questions
             )
             
             # Configuration for checkpointer
@@ -170,21 +217,41 @@ async def start_exam_agent(room_name: str, token: str, qp_id: str, thread_id: st
             print(f"{ai_response}")
             print(f"{'='*60}\n")
             
+            # === Extract response metadata for data channel ===
+            response_type = result.get("response_type", "follow_up")
+            response_options = result.get("response_options")
+            
+            print(f"📊 Response type: {response_type}")
+            
+            # Send data channel message for questions (UI display)
+            if response_type == "question":
+                import json
+                data_payload = {
+                    "type": "question",
+                    "text": ai_response,
+                    "options": response_options  # None for long_answer, list for MCQ
+                }
+                await room.local_participant.publish_data(
+                    json.dumps(data_payload).encode(),
+                    reliable=True
+                )
+                print(f"📤 Sent question data to frontend via data channel")
+            
             # Split into sentences for progressive streaming
             sentence_pattern = re.compile(r'([^.!?]+[.!?]+)')
             sentences = sentence_pattern.findall(ai_response)
             
-            # Stream TTS for each sentence
+            # Stream TTS for each sentence (image description is in LLM context, not TTS)
             print(f"🎙️ Streaming TTS for {len(sentences)} sentences...")
             for sentence in sentences:
                 sentence = sentence.strip()
                 if sentence:
-                    await generate_and_stream_tts(sentence, audio_source)
+                    await generate_and_stream_tts(sentence, audio_source, region)
             
             # Handle remaining text without punctuation
             last_text = sentence_pattern.sub('', ai_response).strip()
             if last_text:
-                await generate_and_stream_tts(last_text, audio_source)
+                await generate_and_stream_tts(last_text, audio_source, region)
             
             print("✅ Agent response complete")
             
@@ -216,8 +283,8 @@ async def start_exam_agent(room_name: str, token: str, qp_id: str, thread_id: st
         print(f"🎧 Received audio track from {participant.identity}")
         
         try:
-            # Initialize Deepgram Flux client
-            dg_client = AsyncDeepgramClient() 
+            # Initialize Deepgram Flux client - SDK v5 requires keyword arg
+            dg_client = AsyncDeepgramClient(api_key=DEEPGRAM_API_KEY)
             
             # Connect to Deepgram Flux v2 with async context manager
             # Using flux-general-en model with 48kHz linear16 audio
@@ -231,7 +298,7 @@ async def start_exam_agent(room_name: str, token: str, qp_id: str, thread_id: st
             ) as connection:
                 
                 # Message handler for Deepgram Flux responses
-                def on_message(message: ListenV2SocketClientResponse) -> None:
+                def on_message(message) -> None:  # SDK v5 uses dynamic types
                     nonlocal transcript_buffer
                     
                     # Check message type
@@ -385,14 +452,14 @@ async def start_exam_agent(room_name: str, token: str, qp_id: str, thread_id: st
     await asyncio.Future()  # Run forever until disconnected
 
 
-async def main(room_name: str, token: str, qp_id: str, thread_id: str, mode: str = "exam"):
+async def main(room_name: str, token: str, qp_id: str, thread_id: str, mode: str = "exam", region: str = "india"):
     """
     Main entry point - called from API endpoint
     In production, this is spawned as a background task from FastAPI
     
     Example usage from api.py:
         asyncio.create_task(
-            main(room_name, token, qp_id, thread_id, mode)
+            main(room_name, token, qp_id, thread_id, mode, region)
         )
     """
     try:
@@ -402,10 +469,11 @@ async def main(room_name: str, token: str, qp_id: str, thread_id: str, mode: str
         print(f"QP ID: {qp_id}")
         print(f"Thread ID: {thread_id}")
         print(f"Mode: {mode.upper()}")
+        print(f"Region: {region.upper()}")
         print(f"{'='*60}\n")
         
         # Start the exam agent
-        await start_exam_agent(room_name, token, qp_id, thread_id, mode)
+        await start_exam_agent(room_name, token, qp_id, thread_id, mode, region)
         
     except KeyboardInterrupt:
         print("\n⚠️ Interrupted by user")

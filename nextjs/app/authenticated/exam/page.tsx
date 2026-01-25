@@ -2,10 +2,11 @@
 
 import React, { useState, useEffect, Suspense } from "react"
 import { useSearchParams } from "next/navigation"
-import { LiveKitRoom, RoomAudioRenderer, useVoiceAssistant, useLocalParticipant, useRemoteParticipants, RoomContext } from "@livekit/components-react"
+import { LiveKitRoom, RoomAudioRenderer, useVoiceAssistant, useLocalParticipant, useRemoteParticipants, RoomContext, useDataChannel } from "@livekit/components-react"
 import "@livekit/components-styles"
 import { Room } from "livekit-client"
 import { v4 as uuidv4 } from "uuid"
+import { createClient } from "@/lib/supabase/client"
 import { motion, AnimatePresence } from "motion/react"
 import { Orb } from "@/components/ui/orb"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -22,8 +23,11 @@ import {
   Maximize2,
   Minimize2,
   MessageSquare,
-  Loader2
+  Loader2,
+  AlertTriangle,
+  Clock
 } from "lucide-react"
+import { toast } from "sonner"
 
 interface ExamSessionResponse {
   success: boolean
@@ -44,6 +48,9 @@ const ExamPage = () => {
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [isMounted, setIsMounted] = useState(false)
+  const [timeRemaining, setTimeRemaining] = useState<number | null>(null) // seconds
+  const [examDuration, setExamDuration] = useState<number>(60) // minutes
+  const [warningsShown, setWarningsShown] = useState<Set<string>>(new Set())
   const searchParams = useSearchParams()
 
   // Create room instance with optimizations
@@ -64,6 +71,20 @@ const ExamPage = () => {
     const url = searchParams.get("url")
     const qpIdParam = searchParams.get("qp_id")
     const threadIdParam = searchParams.get("thread_id")
+    const durationParam = searchParams.get("duration")
+    const modeParam = searchParams.get("mode")
+
+    // Set duration and mode from URL params
+    if (durationParam) {
+      const mins = parseInt(durationParam)
+      if (!isNaN(mins) && mins > 0) {
+        setExamDuration(mins)
+        setTimeRemaining(mins * 60) // Convert to seconds
+      }
+    }
+    if (modeParam === "exam" || modeParam === "learn") {
+      setExamMode(modeParam)
+    }
 
     if (roomName && token && url) {
       setSessionInfo({
@@ -73,11 +94,83 @@ const ExamPage = () => {
         livekit_url: url,
         qp_id: qpIdParam || "unknown",
         thread_id: threadIdParam || "unknown",
-        mode: "exam"
+        mode: modeParam || "exam"
       })
       setExamStarted(true)
     }
   }, [searchParams])
+
+  // Countdown timer effect
+  useEffect(() => {
+    if (!examStarted || timeRemaining === null || examMode === "learn") return
+
+    const interval = setInterval(() => {
+      setTimeRemaining(prev => {
+        if (prev === null || prev <= 0) {
+          clearInterval(interval)
+          return 0
+        }
+        return prev - 1
+      })
+    }, 1000)
+
+    return () => clearInterval(interval)
+  }, [examStarted, examMode, timeRemaining !== null])
+
+  // Time-up notifications and auto-submit
+  useEffect(() => {
+    if (!examStarted || timeRemaining === null || examMode === "learn") return
+
+    // 5 minute warning
+    if (timeRemaining === 300 && !warningsShown.has("5min")) {
+      setWarningsShown(prev => new Set(prev).add("5min"))
+      toast.warning("5 minutes remaining", {
+        description: "Start wrapping up your answers.",
+        icon: <Clock className="h-4 w-4" />,
+        duration: 5000,
+      })
+    }
+
+    // 1 minute warning
+    if (timeRemaining === 60 && !warningsShown.has("1min")) {
+      setWarningsShown(prev => new Set(prev).add("1min"))
+      toast.warning("1 minute remaining!", {
+        description: "Exam will auto-submit soon.",
+        icon: <AlertTriangle className="h-4 w-4" />,
+        duration: 5000,
+      })
+    }
+
+    // 30 second warning
+    if (timeRemaining === 30 && !warningsShown.has("30sec")) {
+      setWarningsShown(prev => new Set(prev).add("30sec"))
+      toast.error("30 seconds remaining!", {
+        description: "Your exam will be submitted automatically.",
+        duration: 5000,
+      })
+    }
+
+    // Time's up - auto submit
+    if (timeRemaining === 0 && !warningsShown.has("timeup")) {
+      setWarningsShown(prev => new Set(prev).add("timeup"))
+      toast.error("Time's up!", {
+        description: "Your exam has been automatically submitted.",
+        duration: 8000,
+      })
+      // Trigger end exam - give a small delay for toast to show
+      setTimeout(() => {
+        endExam()
+      }, 1500)
+    }
+  }, [timeRemaining, examStarted, examMode, warningsShown])
+
+  // Format time as MM:SS
+  const formatTime = (seconds: number | null): string => {
+    if (seconds === null) return `${examDuration}:00`
+    const mins = Math.floor(seconds / 60)
+    const secs = seconds % 60
+    return `${mins.toString().padStart(2, "0")}:${secs.toString().padStart(2, "0")}`
+  }
 
   if (!isMounted) return null
 
@@ -86,14 +179,37 @@ const ExamPage = () => {
     setError(null)
 
     try {
+      // Fetch user's stored region for TTS routing
+      let userRegion = "india"
+      try {
+        const regionResponse = await fetch("/api/user/region")
+        if (regionResponse.ok) {
+          const regionData = await regionResponse.json()
+          userRegion = regionData.region || "india"
+        }
+      } catch (err) {
+        console.warn("Could not fetch user region, using default:", err)
+      }
+
+      // Get auth token
+      const supabase = createClient()
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session?.access_token) {
+        throw new Error("Not authenticated")
+      }
+
       const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"
       const response = await fetch(`${apiUrl}/start-exam-session`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${session.access_token}`
+        },
         body: JSON.stringify({
           qp_id: qpId,
           thread_id: threadId,
           mode: examMode,
+          region: userRegion,  // Pass user's stored region for TTS
         }),
       })
 
@@ -206,6 +322,8 @@ const ExamPage = () => {
               <ExamRoomContent
                 examMode={examMode}
                 onEndExam={endExam}
+                timeRemaining={timeRemaining}
+                examDuration={examDuration}
               />
               <RoomAudioRenderer />
             </LiveKitRoom>
@@ -219,16 +337,74 @@ const ExamPage = () => {
 function ExamRoomContent({
   examMode,
   onEndExam,
+  timeRemaining,
+  examDuration,
 }: {
   examMode: "exam" | "learn"
   onEndExam: () => void
+  timeRemaining: number | null
+  examDuration: number
 }) {
+  // Format time as MM:SS
+  const formatTime = (seconds: number | null): string => {
+    if (seconds === null) return `${examDuration}:00`
+    const mins = Math.floor(seconds / 60)
+    const secs = seconds % 60
+    return `${mins.toString().padStart(2, "0")}:${secs.toString().padStart(2, "0")}`
+  }
   const [showContextPanel, setShowContextPanel] = useState(true)
   const { state } = useVoiceAssistant()
   const { localParticipant } = useLocalParticipant()
   const [isMuted, setIsMuted] = useState(false)
   const remoteParticipants = useRemoteParticipants()
   const [agentConnected, setAgentConnected] = useState(false)
+
+  // === Data Channel for receiving question data from agent ===
+  const [currentQuestion, setCurrentQuestion] = useState<{
+    type: string
+    text: string
+    options?: string[] | null
+    questionNumber?: number
+    totalQuestions?: number
+  } | null>(null)
+  const [questionProgress, setQuestionProgress] = useState<{
+    current: number
+    total: number
+  }>({ current: 0, total: 10 })
+
+  // Listen to data channel messages from agent
+  useDataChannel((msg) => {
+    try {
+      const payload = JSON.parse(new TextDecoder().decode(msg.payload))
+      console.log("📩 Data channel message received:", payload)
+
+      if (payload.type === "question") {
+        setCurrentQuestion({
+          type: payload.type,
+          text: payload.text,
+          options: payload.options,
+          questionNumber: payload.question_number,
+          totalQuestions: payload.total_questions
+        })
+        // Update progress if provided
+        if (payload.question_number && payload.total_questions) {
+          setQuestionProgress({
+            current: payload.question_number,
+            total: payload.total_questions
+          })
+        }
+      }
+      // Also handle explicit progress updates
+      if (payload.type === "progress") {
+        setQuestionProgress({
+          current: payload.current || payload.question_number || questionProgress.current,
+          total: payload.total || payload.total_questions || questionProgress.total
+        })
+      }
+    } catch (e) {
+      console.warn("Failed to parse data channel message:", e)
+    }
+  })
 
   useEffect(() => {
     if (remoteParticipants.length > 0) {
@@ -244,6 +420,14 @@ function ExamRoomContent({
       await localParticipant.setMicrophoneEnabled(!newMutedState)
       setIsMuted(newMutedState)
     }
+  }
+
+  // Handle manual exam end with toast
+  const handleEndExam = () => {
+    toast.success("Exam submitted!", {
+      description: "Your answers have been recorded."
+    })
+    onEndExam()
   }
 
   // Map LiveKit state to Orb state
@@ -263,9 +447,31 @@ function ExamRoomContent({
           <span className="text-lg font-bold tracking-tight">VoiceExam AI</span>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-3">
+          {/* Question Progress Indicator - Always Visible */}
+          <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-background/80 backdrop-blur-sm border border-border/50">
+            <span className="text-sm font-medium text-muted-foreground">Question</span>
+            <span className="text-sm font-bold text-foreground">
+              {questionProgress.current} / {questionProgress.total}
+            </span>
+          </div>
+
+          {/* Timer Badge - Visible in Exam Mode */}
+          {examMode === "exam" && timeRemaining !== null && (
+            <div className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full backdrop-blur-sm border ${
+              timeRemaining < 60
+                ? "bg-destructive/20 border-destructive/50 text-destructive"
+                : timeRemaining < 300
+                  ? "bg-amber-500/20 border-amber-500/50 text-amber-500"
+                  : "bg-background/80 border-border/50 text-foreground"
+            }`}>
+              <Timer className="h-4 w-4" />
+              <span className="text-sm font-mono font-bold">{formatTime(timeRemaining)}</span>
+            </div>
+          )}
+
           <Badge variant={agentConnected ? "default" : "secondary"} className="transition-colors">
-            {agentConnected ? "Agent Connected" : "Connecting..."}
+            {agentConnected ? "Connected" : "Connecting..."}
           </Badge>
 
           <Sheet>
@@ -282,19 +488,21 @@ function ExamRoomContent({
                 <div className="space-y-2">
                   <div className="flex justify-between text-sm">
                     <span className="text-muted-foreground">Progress</span>
-                    <span className="font-medium">0 / 10</span>
+                    <span className="font-medium">{questionProgress.current} / {questionProgress.total}</span>
                   </div>
-                  <Progress value={0} className="h-2" />
+                  <Progress value={(questionProgress.current / questionProgress.total) * 100} className="h-2" />
                 </div>
 
                 <div className="space-y-2">
                   <div className="flex justify-between text-sm">
                     <span className="text-muted-foreground">Time Remaining</span>
-                    <span className="font-medium font-mono">45:00</span>
+                    <span className={`font-medium font-mono ${timeRemaining !== null && timeRemaining < 300 ? 'text-red-500' : ''}`}>
+                      {formatTime(timeRemaining)}
+                    </span>
                   </div>
                   <div className="flex items-center gap-2 text-sm text-muted-foreground">
                     <Timer className="h-4 w-4" />
-                    <span>Standard Time</span>
+                    <span>{examDuration} min {examMode === "learn" ? "(No limit)" : "exam"}</span>
                   </div>
                 </div>
 
@@ -344,23 +552,40 @@ function ExamRoomContent({
                     </CardTitle>
                   </CardHeader>
                   <CardContent className="flex-1 overflow-y-auto p-6 space-y-6">
-                    <div className="space-y-4">
-                      <div className="p-4 rounded-lg bg-primary/5 border border-primary/10">
-                        <h3 className="font-semibold text-lg mb-2">Question 1</h3>
-                        <p className="text-muted-foreground leading-relaxed">
-                          Explain the concept of &quot;Closure&quot; in JavaScript. How does it relate to variable scope and memory management? Provide a practical example of where you might use it.
-                        </p>
-                      </div>
-
-                      <div className="space-y-2">
-                        <h4 className="text-sm font-medium text-muted-foreground">Key Concepts to Cover:</h4>
-                        <div className="flex flex-wrap gap-2">
-                          <Badge variant="secondary">Lexical Scope</Badge>
-                          <Badge variant="secondary">Garbage Collection</Badge>
-                          <Badge variant="secondary">Data Privacy</Badge>
+                    {currentQuestion ? (
+                      <div className="space-y-4">
+                        <div className="p-4 rounded-lg bg-primary/5 border border-primary/10">
+                          <h3 className="font-semibold text-lg mb-3">Current Question</h3>
+                          <p className="text-foreground leading-relaxed whitespace-pre-wrap">
+                            {currentQuestion.text}
+                          </p>
                         </div>
+
+                        {/* MCQ Options */}
+                        {currentQuestion.options && currentQuestion.options.length > 0 && (
+                          <div className="space-y-2">
+                            <h4 className="text-sm font-medium text-muted-foreground">Options:</h4>
+                            <div className="space-y-2">
+                              {currentQuestion.options.map((option, idx) => (
+                                <div
+                                  key={idx}
+                                  className="p-3 rounded-lg border border-border/50 bg-muted/20 hover:bg-muted/40 transition-colors cursor-pointer"
+                                >
+                                  <span className="font-medium mr-2">{String.fromCharCode(65 + idx)}.</span>
+                                  {option}
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
                       </div>
-                    </div>
+                    ) : (
+                      <div className="flex flex-col items-center justify-center h-full text-center text-muted-foreground">
+                        <MessageSquare className="h-12 w-12 mb-4 opacity-50" />
+                        <p className="text-lg font-medium">Waiting for question...</p>
+                        <p className="text-sm mt-2">The AI examiner will display questions here as they are asked.</p>
+                      </div>
+                    )}
                   </CardContent>
                 </Card>
               </motion.div>
@@ -385,7 +610,7 @@ function ExamRoomContent({
             variant="destructive"
             size="icon"
             className="h-14 w-14 rounded-full shadow-lg shadow-destructive/20"
-            onClick={onEndExam}
+            onClick={handleEndExam}
           >
             <PhoneOff className="h-6 w-6" />
           </Button>
@@ -399,7 +624,7 @@ function ExamRoomContent({
             {showContextPanel ? <Minimize2 className="h-5 w-5" /> : <Maximize2 className="h-5 w-5" />}
           </Button>
         </div>
-      </div>
+      </div >
     </>
   )
 }

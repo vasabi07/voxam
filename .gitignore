@@ -1,2 +1,22 @@
 python/chapter1.pdf
 .vscode/
+
+# Sensitive/Credentials - NEVER COMMIT
+python/voxam-*.json
+*.pem
+*.key
+
+# Test audio files
+python/tts_samples/
+python/test_audio.wav
+
+# Test PDFs and extracted content
+python/*.pdf
+python/chapter1*.md
+python/chapter1*.json
+python/chapter1_structured.json
+python/content/
+
+# Build artifacts
+python/.coverage
+python/python.egg-info/

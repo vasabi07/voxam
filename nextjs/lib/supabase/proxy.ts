@@ -1,9 +1,49 @@
 import { createServerClient } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
 
+/**
+ * Detect user region for geo-based pricing
+ * Priority: query param > existing cookie > Vercel geo > default
+ */
+function detectRegion(request: NextRequest): string {
+  // 1. Check query param (for local testing: ?region=global or ?region=india)
+  const queryRegion = request.nextUrl.searchParams.get('region')
+  if (queryRegion === 'india' || queryRegion === 'global') {
+    return queryRegion
+  }
+
+  // 2. Check existing cookie (already detected)
+  const cookieRegion = request.cookies.get('region')?.value
+  if (cookieRegion === 'india' || cookieRegion === 'global') {
+    return cookieRegion
+  }
+
+  // 3. Use Vercel's geo detection (works on Vercel Edge)
+  // request.geo is available on Vercel Edge runtime
+  const country = request.headers.get('x-vercel-ip-country') ||
+    (request as unknown as { geo?: { country?: string } }).geo?.country
+
+  if (country === 'IN') {
+    return 'india'
+  }
+
+  // 4. Default to 'india' for local development (no geo available)
+  //    Switch to 'global' if you want to test global pricing locally
+  return country ? 'global' : 'india'
+}
+
 export async function updateSession(request: NextRequest) {
   let supabaseResponse = NextResponse.next({
     request,
+  })
+
+  // Detect region and set cookie
+  const region = detectRegion(request)
+  supabaseResponse.cookies.set('region', region, {
+    httpOnly: false, // Allow JS to read it
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: 'lax',
+    maxAge: 60 * 60 * 24 * 30, // 30 days
   })
 
   // With Fluid compute, don't put this client in a global environment
@@ -20,6 +60,13 @@ export async function updateSession(request: NextRequest) {
           cookiesToSet.forEach(({ name, value }) => request.cookies.set(name, value))
           supabaseResponse = NextResponse.next({
             request,
+          })
+          // Re-add region cookie after creating new response
+          supabaseResponse.cookies.set('region', region, {
+            httpOnly: false,
+            secure: process.env.NODE_ENV === 'production',
+            sameSite: 'lax',
+            maxAge: 60 * 60 * 24 * 30,
           })
           cookiesToSet.forEach(({ name, value, options }) => supabaseResponse.cookies.set(name, value, options))
         },

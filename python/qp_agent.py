@@ -203,7 +203,9 @@ def get_selected_questions_with_content(input_state: QPInputState):
                             "question_type": q.get("question_type", ""),
                             "context_content": context_content,
                             "chunk_index": chunk_index,
-                            "chunk_id": chunk_id
+                            "chunk_id": chunk_id,
+                            # Image URL for frontend display (description is inline in context)
+                            "image_url": q.get("image_url"),
                         })
             except Exception as e:
                 print(f"⚠️ Error processing record: {e}")
@@ -383,6 +385,8 @@ def group_questions_by_context(state: QPInputState) -> QPInputState:
             'options': question.get('options', []),
             'correct_answer': question.get('correct_answer', ''),
             'explanation': question.get('explanation', ''),
+            # Image URL for frontend display (description is inline in context)
+            'image_url': question.get('image_url'),
         }
         
         context_groups[chunk_id]['questions'].append(question_data)
@@ -404,7 +408,9 @@ def group_questions_by_context(state: QPInputState) -> QPInputState:
                 'options': question['options'],
                 'correct_answer': question['correct_answer'],
                 'explanation': question['explanation'],
-                'context': group['context']  # Use the group's context for all questions
+                'context': group['context'],  # Use the group's context for all questions
+                # Image URL for frontend display (description is inline in context)
+                'image_url': question.get('image_url'),
             })
     
     # Store as grouped questions
@@ -445,6 +451,86 @@ def store_in_redis(state: QPInputState) -> QPInputState:
     
     return state
 
+
+def store_in_postgres(state: QPInputState) -> QPInputState:
+    """
+    Update the QuestionPaper table in Supabase Postgres with:
+      - status = 'READY'
+      - questions = JSON array of grouped_questions
+    
+    This triggers the Supabase Realtime update that the frontend is listening to.
+    """
+    import json
+    
+    qp_id = state.qp_id
+    
+    if not state.grouped_questions:
+        print("⚠️ No questions to store in Postgres")
+        return state
+    
+    # Get Supabase credentials from environment
+    supabase_url = os.getenv("NEXT_PUBLIC_SUPABASE_URL")
+    supabase_service_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
+    
+    if not supabase_url or not supabase_service_key:
+        print("⚠️ Supabase credentials not found, skipping Postgres update")
+        print("   Set NEXT_PUBLIC_SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY in .env")
+        return state
+    
+    try:
+        from supabase import create_client
+        
+        supabase = create_client(supabase_url, supabase_service_key)
+        
+        # Update QuestionPaper with status=READY and questions JSON
+        result = supabase.table("QuestionPaper").update({
+            "status": "READY",
+            "questions": state.grouped_questions,  # Supabase handles JSON serialization
+            "updatedAt": "now()"  # Use current timestamp
+        }).eq("id", qp_id).execute()
+        
+        if result.data:
+            print(f"✅ Updated QuestionPaper {qp_id} in Postgres with status=READY")
+            print(f"   Questions count: {len(state.grouped_questions)}")
+        else:
+            print(f"⚠️ No rows updated for QuestionPaper {qp_id} - may not exist yet")
+            
+    except ImportError:
+        print("⚠️ supabase-py not installed. Run: pip install supabase")
+        print("   Falling back to psycopg2...")
+        
+        # Fallback to direct Postgres connection
+        try:
+            import psycopg2
+            database_url = os.getenv("DATABASE_URL")
+            
+            if not database_url:
+                print("⚠️ DATABASE_URL not found, cannot update Postgres")
+                return state
+            
+            conn = psycopg2.connect(database_url)
+            cursor = conn.cursor()
+            
+            cursor.execute(
+                '''UPDATE "QuestionPaper" 
+                   SET status = %s, questions = %s, "updatedAt" = NOW() 
+                   WHERE id = %s''',
+                ('READY', json.dumps(state.grouped_questions), qp_id)
+            )
+            conn.commit()
+            cursor.close()
+            conn.close()
+            
+            print(f"✅ Updated QuestionPaper {qp_id} via psycopg2")
+            
+        except Exception as e:
+            print(f"❌ Failed to update Postgres via psycopg2: {e}")
+            
+    except Exception as e:
+        print(f"❌ Failed to update QuestionPaper in Postgres: {e}")
+    
+    return state
+
 # Create LangGraph workflow
 def create_qp_workflow() -> CompiledStateGraph:
     """
@@ -459,6 +545,7 @@ def create_qp_workflow() -> CompiledStateGraph:
     workflow.add_node("fetch_content", get_selected_questions_with_content)
     workflow.add_node("group_questions", group_questions_by_context)
     workflow.add_node("store_redis", store_in_redis)
+    workflow.add_node("store_postgres", store_in_postgres)
     
     # Define the workflow edges
     workflow.set_entry_point("fetch_metadata")
@@ -466,7 +553,8 @@ def create_qp_workflow() -> CompiledStateGraph:
     workflow.add_edge("plan_generation", "fetch_content")
     workflow.add_edge("fetch_content", "group_questions")
     workflow.add_edge("group_questions", "store_redis")
-    workflow.add_edge("store_redis", END)
+    workflow.add_edge("store_redis", "store_postgres")
+    workflow.add_edge("store_postgres", END)
     
     # Compile the workflow
     return workflow.compile()

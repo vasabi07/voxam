@@ -1,0 +1,170 @@
+{
+  "model": {
+    "id": "meta-llama/llama-4-maverick-17b-128e-instruct",
+    "name": "Llama 4 Maverick (17B, 128 experts)",
+    "input_cost_per_m": 0.2,
+    "output_cost_per_m": 0.6
+  },
+  "results": [
+    {
+      "doc_name": "cs",
+      "model_name": "Llama 4 Maverick (17B, 128 experts)",
+      "pages_tested": 3,
+      "total_chars": 5242,
+      "total_input_tokens": 7686,
+      "total_output_tokens": 1363,
+      "total_latency_ms": 4978,
+      "avg_latency_per_page_ms": 1659.3333333333333,
+      "cost_estimate": 0.0023550000000000003,
+      "page_results": [
+        {
+          "page_num": 1,
+          "text": "# Chapter 6 Searching\n## In this Chapter\n\u00bb Introduction\n\u00bb Linear Search\n\u00bb Binary Search\n\u00bb Search by Hashing\n\n## 6.1 Introduction\nWe store many things in our home and find them out later as and when required. Sometimes we remember the exact location of a required item. But, sometimes we do not remember the exact location and in that case we need to search for the required item. A computer also stores lots of data to be retrieved later as and when demanded by a user or a program.\n\nSearching means locating a particular element in a collection of elements. Search result determines whether that particular element is present in the collection or not. If it is present, we can also find out the position of that element in the given collection. Searching is an important technique in computer science. In order to design algorithms, programmers need to understand the different ways in which a collection of data can be searched for retrieval.\n\n\"Even though most people won't be directly involved with programming, everyone is affected by computers, so an educated person should have a good understanding of how computer hardware, software, and networks operate.\" --- Brian Kernighan\n\n[QR code]\n\nChpater-6.indd 81\nReprint 2025-26\n18-Jun-21 2:32:08 PM",
+          "input_tokens": 2562,
+          "output_tokens": 267,
+          "latency_ms": 1372,
+          "error": null
+        },
+        {
+          "page_num": 3,
+          "text": "## Table 6.2 Linear search for key 17 in numList of Table 6.1\n| index | index < n | numList[index]= key | index=index+1 |\n| --- | --- | --- | --- |\n| 0 | 0 < 7 ? Yes | 8 = 17? No | 1 |\n| 1 | 1 < 7 ? Yes | -4 = 17? No | 2 |\n| 2 | 2 < 7 ? Yes | 7 = 17? No | 3 |\n| 3 | 3 < 7 ? Yes | 17 = 17? Yes |  |\n\nObserve that after four comparisons, the algorithm found the key 17 and will display 'Element found at position 4'.\n\nLet us now assume another arrangement of the elements in numList as [17, 8, -4, 7, 0, 2, 19] and search for the key K=17 in numList.\n\n## Table 6.3 Elements in numList alongwith their index value\n| Index in numList | 0 | 1 | 2 | 3 | 4 | 5 | 6 |\n| --- | --- | --- | --- | --- | --- | --- | --- |\n| Value | 17 | 8 | -4 | 7 | 0 | 2 | 19 |\n\n## Table 6.4 Linear search for key 17 in numList given in Table 6.3\n| index | index < n | numList[index] = key | index=index+1 |\n| --- | --- | --- | --- |\n| 0 | 0 < 7 ? Yes | 17 = 17? Yes | 1 |\n\nFrom Table 6.4, it is clear that the algorithm had to make only 1 comparison to display 'Element found at position 1'. Thus, if the key to be searched is the first element in the list, the linear search algorithm will always have to make only 1 comparison. This is the minimum amount of work that the linear search algorithm would have to do.\n\nLet us now assume another arrangement of the elements in numList as [8, -4, 7, 0, 2, 19, 17] and search for the key K = 17 in numList.\n\nOn a dry run, we can find out that the linear search algorithm has to compare each element in the list till the end to display 'Element found at position 7'. Thus, if the key to be searched is the last element in the list, the linear search algorithm will have to make n comparisons, where n is the number of elements in the list. This is in fact the maximum amount of work the linear search algorithm would have to do.\n\n## Activity 6.2\nIn the list : L = [7, -1, 11, 32, 17, 19, 23, 29, 31, 37, 43]\nDetermine the number of comparisons linear search takes to search for key = 43.\n\n## Searching\n[Page 83 footer]\n\nReprint 2025-26\n18-Jun-21 2:32:09 PM | 83",
+          "input_tokens": 2562,
+          "output_tokens": 677,
+          "latency_ms": 1956,
+          "error": null
+        },
+        {
+          "page_num": 5,
+          "text": "## 6.3 Binary Search\n\nConsider a scenario where we have to find the meaning of the word Zoology in an English dictionary. Where do we search it in the dictionary?\n\n1. in the first half?\n2. around the middle?\n3. in the second half?\n\nIt is certainly more prudent to look for the word in the second half of the dictionary as the word starts with the alphabet 'Z'. On the other hand, if we were to find the meaning of the word Biology, we would have searched in the first half of the dictionary.\n\nWe were able to decide where to search in the dictionary because we are aware of the fact that all words in an English dictionary are placed in alphabetical order. Taking advantage of this, we could avoid unnecessary comparison through each word beginning from the first word of the dictionary and moving towards the end till we found the desired word. However, if the words in the dictionary were not alphabetically arranged, we would have to do linear search to find the meaning of a word.\n\nThe binary search is a search technique that makes use of the ordering of elements in the list to quickly search a key. For numeric values, the elements in the list may be arranged either in ascending or descending order of their key values. For textual data, it may be arranged alphabetically starting from a to z or from z to a.\n\nIn binary search, the key to be searched is compared with the element in the middle of a sorted list. This could result in either of the three possibilities:\n\ni) the element at the middle position itself matches the key or\nii) the element at the middle position is greater than the key or\niii) the element at the middle position is smaller than the key\n\nIf the element at the middle position matches the key, we declare the search successful and the searching process ends.\n\n[Illustration of a book with a red cover and a number 85 on it]\n\nChpater-6.indd 85\n18-Jun-21 2:32:09 PM\nReprint 2025-26",
+          "input_tokens": 2562,
+          "output_tokens": 419,
+          "latency_ms": 1650,
+          "error": null
+        }
+      ],
+      "markdown_preview": "## Page 1\n\n# Chapter 6 Searching\n## In this Chapter\n\u00bb Introduction\n\u00bb Linear Search\n\u00bb Binary Search\n\u00bb Search by Hashing\n\n## 6.1 Introduction\nWe store many things in our home and find them out later as and when required. Sometimes we remember the exact location of a required item. But, sometimes we do not remember the exact location and in that case we need to search for the required item. A computer also stores lots of data to be retrieved later as and when demanded by a user or a program.\n\nSearching means locating a particular element in a collection of elements. Search result determines whether that particular element is present in the collection or not. If it is present, we can also find out the position of that element in the given collection. Searching is an important technique in computer science. In order to design algorithms, programmers need to understand the different ways in which a collection of data can be searched for retrieval.\n\n\"Even though most people won't be directly involved with programming, everyone is affected by computers, so an educated person should have a good understanding of how computer hardware, software, and networks operate.\" --- Brian Kernighan\n\n[QR code]\n\nChpater-6.indd 81\nReprint 2025-26\n18-Jun-21 2:32:08 PM\n\n---\n\n## Page 3\n\n## Table 6.2 Linear search for key 17 in numList of Table 6.1\n| index | index < n | numList[index]= key | index=index+1 |\n| --- | --- | --- | --- |\n| 0 | 0 < 7 ? Yes | 8 = 17? No | 1 |\n| 1 | 1 < 7 ? Yes | -4 = 17? No | 2 |\n| 2 | 2 < 7 ? Yes | 7 = 17? No | 3 |\n| 3 | 3 < 7 ? Yes | 17 = 17? Yes |  |\n\nObserve that after four comparisons, the algorithm found the key 17 and will display 'Element found at position 4'.\n\nLet us now assume another arrangement of the elements in numList as [17, 8, -4, 7, 0, 2, 19] and search for the key K=17 in numList.\n\n## Table 6.3 Elements in numList alongwith their index value\n| Index in numList | 0 | 1 | 2 | 3 | 4 | 5 | 6 |\n| --- | --- | --- | --- | --- | --- | --- | --- |\n| Value | 17 | 8 | -4 | 7 | 0 | 2 | 19 |\n\n## Table 6.4 Linear search for key 17 in numList given in Table 6.3\n| index | index < n | numList[index] = key | index=index+1 |\n| --- | --- | --- | --- |\n| 0 | 0 < 7 ? Yes | 17 = 17? Yes | 1 |\n\nFrom Table 6.4, it is clear that the algorithm had to make only 1 comparison to display 'Element found at position 1'. Thus, if the key to be searched is the first element in the list, the linear search algorithm will always have to make only 1 comparison. This is the minimum amount of work that the linear search algorithm would have to do.\n\nLet us now assume another arrangement of the elements in numList as [8, -4, 7, 0, 2, 19, 17] and search for the key K = 17 in numList.\n\nOn a dry run, we can find out that the linear search algorithm has to compare each element in the list till the end to display 'Element found at position 7'. Thus, if the key to be searched is the last element in the list, the linear search algorithm will have to make n comparisons, where n is the number of elements in the list. This is in fact the maximum amount of work the linear search algorithm would have to do.\n\n## Activity 6.2\nIn the list : L = [7, -1, 11, 32, 17, 19, 23, 29, 31, 37, 43]\nDetermine the number of comparisons linear search takes to search for key = 43.\n\n## Searching\n[Page 83 footer]\n\nReprint 2025-26\n18-Jun-21 2:32:09 PM | 83\n\n---\n\n## Page 5\n\n## 6.3 Binary Search\n\nConsider a scenario where we have to find the meaning of the word Zoology in an English dictionary. Where do we search it in the dictionary?\n\n1. in the first half?\n2. around the middle?\n3. in the second half?\n\nIt is certainly more prudent to look for the word in the second half of the dictionary as the word starts with the alphabet 'Z'. On the other hand, if we were to find the meaning of the word Biology, we would have searched in the first half of the dictionary.\n\nWe were able to decide where to search in the dictionary because we are aware of the fact that all words in an English dictionary are placed in alphabetical order. Taking advantage of this, we could avoid unnecessary comparison through each word beginning from the first word of the dictionary and moving towards the end till we found the desired word. However, if the words in the dictionary were not alphabetically arranged, we would have to do linear search to find the meaning of a word.\n\nThe binary search is a search technique that makes use of the ordering of elements in the list to quickly search a key. For numeric values, the elements in the list may be arranged either in ascending or descending order of their key values. For textual data, it may be arranged alphabetically starting from a to z or from z to a.\n\nIn binary search, the key to be searched is compared with the element in the middle of a sorted list. This could result in either of the three possibilities:\n\ni) the element at the middle position itself matches the key or\nii) the element at the middle position is greater than the key or\niii) the element",
+      "has_tables": true,
+      "has_equations": false
+    },
+    {
+      "doc_name": "physics",
+      "model_name": "Llama 4 Maverick (17B, 128 experts)",
+      "pages_tested": 1,
+      "total_chars": 1347,
+      "total_input_tokens": 2417,
+      "total_output_tokens": 284,
+      "total_latency_ms": 1266,
+      "avg_latency_per_page_ms": 1266.0,
+      "cost_estimate": 0.0006538,
+      "page_results": [
+        {
+          "page_num": 1,
+          "text": "## Chapter Three\n## CURRENT ELECTRICITY\n\n### 3.1 Introduction\n\nIn Chapter 1, all charges whether free or bound, were considered to be at rest. Charges in motion constitute an electric current. Such currents occur naturally in many situations. Lightning is one such phenomenon in which charges flow from the clouds to the earth through the atmosphere, sometimes with disastrous results. The flow of charges in lightning is not steady, but in our everyday life we see many devices where charges flow in a steady manner, like water flowing smoothly in a river. A torch and a cell-driven clock are examples of such devices. In the present chapter, we shall study some of the basic laws concerning steady electric currents.\n\n### 3.2 Electric Current\n\nImagine a small area held normal to the direction of flow of charges. Both the positive and the negative charges may flow forward and backward across the area. In a given time interval $t$, let $q_+$ be the net amount (i.e., forward minus backward) of positive charge that flows in the forward direction across the area. Similarly, let $q_-$ be the net amount of negative charge flowing across the area in the forward direction. The net amount of charge flowing across the area in the forward direction in the time interval $t$, then, is $q = q_+ - q_-$. This is proportional to $t$ for steady current",
+          "input_tokens": 2417,
+          "output_tokens": 284,
+          "latency_ms": 1266,
+          "error": null
+        },
+        {
+          "page_num": 5,
+          "text": "",
+          "input_tokens": 0,
+          "output_tokens": 0,
+          "latency_ms": 164,
+          "error": "HTTP 429: {\"error\":{\"message\":\"Rate limit reached for model `meta-llama/llama-4-maverick-17b-128e-instruct` in organization `org_01jgnywppae699ycjqqak35s51` service tier `on_demand` on tokens per minute (TPM): "
+        },
+        {
+          "page_num": 10,
+          "text": "",
+          "input_tokens": 0,
+          "output_tokens": 0,
+          "latency_ms": 354,
+          "error": "HTTP 429: {\"error\":{\"message\":\"Rate limit reached for model `meta-llama/llama-4-maverick-17b-128e-instruct` in organization `org_01jgnywppae699ycjqqak35s51` service tier `on_demand` on tokens per minute (TPM): "
+        }
+      ],
+      "markdown_preview": "## Page 1\n\n## Chapter Three\n## CURRENT ELECTRICITY\n\n### 3.1 Introduction\n\nIn Chapter 1, all charges whether free or bound, were considered to be at rest. Charges in motion constitute an electric current. Such currents occur naturally in many situations. Lightning is one such phenomenon in which charges flow from the clouds to the earth through the atmosphere, sometimes with disastrous results. The flow of charges in lightning is not steady, but in our everyday life we see many devices where charges flow in a steady manner, like water flowing smoothly in a river. A torch and a cell-driven clock are examples of such devices. In the present chapter, we shall study some of the basic laws concerning steady electric currents.\n\n### 3.2 Electric Current\n\nImagine a small area held normal to the direction of flow of charges. Both the positive and the negative charges may flow forward and backward across the area. In a given time interval $t$, let $q_+$ be the net amount (i.e., forward minus backward) of positive charge that flows in the forward direction across the area. Similarly, let $q_-$ be the net amount of negative charge flowing across the area in the forward direction. The net amount of charge flowing across the area in the forward direction in the time interval $t$, then, is $q = q_+ - q_-$. This is proportional to $t$ for steady current",
+      "has_tables": false,
+      "has_equations": true
+    },
+    {
+      "doc_name": "chemistry",
+      "model_name": "Llama 4 Maverick (17B, 128 experts)",
+      "pages_tested": 1,
+      "total_chars": 2341,
+      "total_input_tokens": 2417,
+      "total_output_tokens": 450,
+      "total_latency_ms": 1934,
+      "avg_latency_per_page_ms": 1934.0,
+      "cost_estimate": 0.0007534,
+      "page_results": [
+        {
+          "page_num": 1,
+          "text": "## Objectives\nAfter studying this Unit, you will be able to\n- define the average and instantaneous rate of a reaction;\n- express the rate of a reaction in terms of change in concentration of either of the reactants or products with time;\n- distinguish between elementary and complex reactions;\n- differentiate between the molecularity and order of a reaction;\n- define rate constant;\n- discuss the dependence of rate of reactions on concentration, temperature and catalyst;\n- derive integrated rate equations for the zero and first order reactions;\n- determine the rate constants for zeroth and first order reactions;\n- describe collision theory.\n\n## Unit 3\n## Chemical Kinetics\nChemical Kinetics helps us to understand how chemical reactions occur.\n\nChemistry, by its very nature, is concerned with change. Substances with well defined properties are converted by chemical reactions into other substances with different properties. For any chemical reaction, chemists try to find out \n(a) the feasibility of a chemical reaction which can be predicted by thermodynamics ( as you know that a reaction with $\\Delta$G < 0, at constant temperature and pressure is feasible);\n(b) extent to which a reaction will proceed can be determined from chemical equilibrium;\n(c) speed of a reaction i.e. time taken by a reaction to reach equilibrium.\n\nAlong with feasibility and extent, it is equally important to know the rate and the factors controlling the rate of a chemical reaction for its complete understanding. For example, which parameters determine as to how rapidly food gets spoiled? How to design a rapidly setting material for dental filling? Or what controls the rate at which fuel burns in an auto engine? All these questions can be answered by the branch of chemistry, which deals with the study of reaction rates and their mechanisms, called **chemical kinetics**. The word kinetics is derived from the Greek word 'kinesis' meaning movement. Thermodynamics tells only about the feasibility of a reaction whereas chemical kinetics tells about the rate of a reaction. For example, thermodynamic data indicate that diamond shall convert to graphite but in reality the conversion rate is so slow that the change is not perceptible at all. Therefore, most people think \n[Image of a QR code with the text \"12085CH04\" below it]\n\nReprint 2025-26",
+          "input_tokens": 2417,
+          "output_tokens": 450,
+          "latency_ms": 1934,
+          "error": null
+        },
+        {
+          "page_num": 5,
+          "text": "",
+          "input_tokens": 0,
+          "output_tokens": 0,
+          "latency_ms": 127,
+          "error": "HTTP 429: {\"error\":{\"message\":\"Rate limit reached for model `meta-llama/llama-4-maverick-17b-128e-instruct` in organization `org_01jgnywppae699ycjqqak35s51` service tier `on_demand` on tokens per minute (TPM): "
+        },
+        {
+          "page_num": 10,
+          "text": "",
+          "input_tokens": 0,
+          "output_tokens": 0,
+          "latency_ms": 125,
+          "error": "HTTP 429: {\"error\":{\"message\":\"Rate limit reached for model `meta-llama/llama-4-maverick-17b-128e-instruct` in organization `org_01jgnywppae699ycjqqak35s51` service tier `on_demand` on tokens per minute (TPM): "
+        }
+      ],
+      "markdown_preview": "## Page 1\n\n## Objectives\nAfter studying this Unit, you will be able to\n- define the average and instantaneous rate of a reaction;\n- express the rate of a reaction in terms of change in concentration of either of the reactants or products with time;\n- distinguish between elementary and complex reactions;\n- differentiate between the molecularity and order of a reaction;\n- define rate constant;\n- discuss the dependence of rate of reactions on concentration, temperature and catalyst;\n- derive integrated rate equations for the zero and first order reactions;\n- determine the rate constants for zeroth and first order reactions;\n- describe collision theory.\n\n## Unit 3\n## Chemical Kinetics\nChemical Kinetics helps us to understand how chemical reactions occur.\n\nChemistry, by its very nature, is concerned with change. Substances with well defined properties are converted by chemical reactions into other substances with different properties. For any chemical reaction, chemists try to find out \n(a) the feasibility of a chemical reaction which can be predicted by thermodynamics ( as you know that a reaction with $\\Delta$G < 0, at constant temperature and pressure is feasible);\n(b) extent to which a reaction will proceed can be determined from chemical equilibrium;\n(c) speed of a reaction i.e. time taken by a reaction to reach equilibrium.\n\nAlong with feasibility and extent, it is equally important to know the rate and the factors controlling the rate of a chemical reaction for its complete understanding. For example, which parameters determine as to how rapidly food gets spoiled? How to design a rapidly setting material for dental filling? Or what controls the rate at which fuel burns in an auto engine? All these questions can be answered by the branch of chemistry, which deals with the study of reaction rates and their mechanisms, called **chemical kinetics**. The word kinetics is derived from the Greek word 'kinesis' meaning movement. Thermodynamics tells only about the feasibility of a reaction whereas chemical kinetics tells about the rate of a reaction. For example, thermodynamic data indicate that diamond shall convert to graphite but in reality the conversion rate is so slow that the change is not perceptible at all. Therefore, most people think \n[Image of a QR code with the text \"12085CH04\" below it]\n\nReprint 2025-26",
+      "has_tables": false,
+      "has_equations": true
+    },
+    {
+      "doc_name": "biology",
+      "model_name": "Llama 4 Maverick (17B, 128 experts)",
+      "pages_tested": 1,
+      "total_chars": 2375,
+      "total_input_tokens": 2417,
+      "total_output_tokens": 478,
+      "total_latency_ms": 1885,
+      "avg_latency_per_page_ms": 1885.0,
+      "cost_estimate": 0.0007702,
+      "page_results": [
+        {
+          "page_num": 1,
+          "text": "## Chapter 6\n## Control and Coordination\n\nIn the previous chapter, we looked at life processes involved in the maintenance functions in living organisms. There, we had started with a notion we all have, that if we see something moving, it is alive. Some of these movements are in fact the result of growth, as in plants. A seed germinates and grows, and we can see that the seedling moves over the course of a few days, it pushes soil aside and comes out. But if its growth were to be stopped, these movements would not happen. Some movements, as in many animals and some plants, are not connected with growth. A cat running, children playing on swings, buffaloes chewing cud - these are not movements caused by growth.\n\nWhy do we associate such visible movements with life? A possible answer is that we think of movement as a response to a change in the environment of the organism. The cat may be running because it has seen a mouse. Not only that, we also think of movement as an attempt by living organisms to use changes in their environment to their advantage. Plants grow out into the sunshine. Children try to get pleasure and fun out of swinging. Buffaloes chew cud to help break up tough food so as to be able to digest it better. When bright light is focussed on our eyes or when we touch a hot object, we detect the change and respond to it with movement in order to protect ourselves.\n\nIf we think a bit more about this, it becomes apparent that all this movement, in response to the environment, is carefully controlled. Each kind of a change in the environment evokes an appropriate movement in response. When we want to talk to our friends in class, we whisper, rather than shouting loudly. Clearly, the movement to be made depends on the event that is triggering it. Therefore, such controlled movement must be connected to the recognition of various events in the environment, followed by only the correct movement in response. In other words, living organisms must use systems providing control and coordination. In keeping with the general principles of body organisation in multicellular organisms, specialised tissues are used to provide these control and coordination activities.\n\n### 6.1 Animals - Nervous System\n\nIn animals, such control and coordination are provided by nervous and muscular tissues, which we have studied in Class IX. Touching a hot",
+          "input_tokens": 2417,
+          "output_tokens": 478,
+          "latency_ms": 1885,
+          "error": null
+        },
+        {
+          "page_num": 3,
+          "text": "",
+          "input_tokens": 0,
+          "output_tokens": 0,
+          "latency_ms": 122,
+          "error": "HTTP 429: {\"error\":{\"message\":\"Rate limit reached for model `meta-llama/llama-4-maverick-17b-128e-instruct` in organization `org_01jgnywppae699ycjqqak35s51` service tier `on_demand` on tokens per minute (TPM): "
+        },
+        {
+          "page_num": 5,
+          "text": "",
+          "input_tokens": 0,
+          "output_tokens": 0,
+          "latency_ms": 106,
+          "error": "HTTP 429: {\"error\":{\"message\":\"Rate limit reached for model `meta-llama/llama-4-maverick-17b-128e-instruct` in organization `org_01jgnywppae699ycjqqak35s51` service tier `on_demand` on tokens per minute (TPM): "
+        }
+      ],
+      "markdown_preview": "## Page 1\n\n## Chapter 6\n## Control and Coordination\n\nIn the previous chapter, we looked at life processes involved in the maintenance functions in living organisms. There, we had started with a notion we all have, that if we see something moving, it is alive. Some of these movements are in fact the result of growth, as in plants. A seed germinates and grows, and we can see that the seedling moves over the course of a few days, it pushes soil aside and comes out. But if its growth were to be stopped, these movements would not happen. Some movements, as in many animals and some plants, are not connected with growth. A cat running, children playing on swings, buffaloes chewing cud - these are not movements caused by growth.\n\nWhy do we associate such visible movements with life? A possible answer is that we think of movement as a response to a change in the environment of the organism. The cat may be running because it has seen a mouse. Not only that, we also think of movement as an attempt by living organisms to use changes in their environment to their advantage. Plants grow out into the sunshine. Children try to get pleasure and fun out of swinging. Buffaloes chew cud to help break up tough food so as to be able to digest it better. When bright light is focussed on our eyes or when we touch a hot object, we detect the change and respond to it with movement in order to protect ourselves.\n\nIf we think a bit more about this, it becomes apparent that all this movement, in response to the environment, is carefully controlled. Each kind of a change in the environment evokes an appropriate movement in response. When we want to talk to our friends in class, we whisper, rather than shouting loudly. Clearly, the movement to be made depends on the event that is triggering it. Therefore, such controlled movement must be connected to the recognition of various events in the environment, followed by only the correct movement in response. In other words, living organisms must use systems providing control and coordination. In keeping with the general principles of body organisation in multicellular organisms, specialised tissues are used to provide these control and coordination activities.\n\n### 6.1 Animals - Nervous System\n\nIn animals, such control and coordination are provided by nervous and muscular tissues, which we have studied in Class IX. Touching a hot",
+      "has_tables": false,
+      "has_equations": false
+    }
+  ]
+}

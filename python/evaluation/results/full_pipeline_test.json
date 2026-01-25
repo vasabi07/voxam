@@ -1,0 +1,70 @@
+{
+  "chemistry": {
+    "checkpoint_3": {
+      "doc_name": "chemistry",
+      "blocks_tested": 2,
+      "total_questions": 24,
+      "questions_with_latex": 12,
+      "questions_per_block": [
+        12,
+        12
+      ],
+      "sample_questions": [
+        {
+          "block": 0,
+          "question": "What is the definition of the rate law for a chemical reaction?",
+          "type": "multiple_choice",
+          "bloom": "remember",
+          "options": [
+            "A. An expression that relates the reaction rate to the concentrations of reactants raised to powers equal to their reaction orders.",
+            "B. A formula that gives the equilibrium constant in terms of concentrations.",
+            "C. An equation that describes the change in temperature over time.",
+            "D. A relationship that connects the activation energy to the frequency factor."
+          ],
+          "latex_count": 0
+        },
+        {
+          "block": 0,
+          "question": "Name the SI unit commonly used for expressing reaction rate when concentration is measured in mol\u00b7L\u207b\u00b9 and time in seconds.",
+          "type": "multiple_choice",
+          "bloom": "remember",
+          "options": [
+            "A. mol\u00b7L\u207b\u00b9\u00b7s\u207b\u00b9",
+            "B. M\u00b7s\u207b\u00b9",
+            "C. mol\u00b7s\u207b\u00b9\u00b7L\u207b\u00b9",
+            "D. kg\u00b7m\u207b\u00b2\u00b7s\u207b\u00b9"
+          ],
+          "latex_count": 0
+        },
+        {
+          "block": 1,
+          "question": "What is the definition of reaction rate in chemical kinetics?",
+          "type": "multiple_choice",
+          "bloom": "remember",
+          "options": [
+            "A. The change in concentration of a reactant or product per unit time, expressed as $-\\frac{d[A]}{dt}$ or $\\frac{d[P]}{dt}$.",
+            "B. The equilibrium constant of a reaction.",
+            "C. The total energy released during a reaction.",
+            "D. The amount of catalyst required for a reaction."
+          ],
+          "latex_count": 0
+        },
+        {
+          "block": 1,
+          "question": "Name the SI unit commonly used for expressing a reaction rate based on concentration change.",
+          "type": "multiple_choice",
+          "bloom": "remember",
+          "options": [
+            "A. mol\u00b7s\u207b\u00b9",
+            "B. mol\u00b7L\u207b\u00b9\u00b7s\u207b\u00b9",
+            "C. J\u00b7mol\u207b\u00b9",
+            "D. kg\u00b7m\u207b\u00b3"
+          ],
+          "latex_count": 0
+        }
+      ],
+      "errors": [],
+      "passed": true
+    }
+  }
+}

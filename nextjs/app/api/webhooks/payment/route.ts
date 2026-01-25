@@ -60,12 +60,14 @@ export async function POST(request: NextRequest) {
  */
 async function handlePaymentCaptured(payload: WebhookPayload) {
     const payment = payload.payload.payment.entity;
+    const paymentId = payment.id;
     const orderId = payment.order_id;
     const notes = payment.notes || {};
 
     const userId = notes.userId;
     const minutes = parseInt(notes.minutes || '0');
     const pages = parseInt(notes.pages || '0');
+    const chatMessages = parseInt(notes.chatMessages || '0');
     const planName = notes.planName;
     const region = notes.region;
 
@@ -74,7 +76,17 @@ async function handlePaymentCaptured(payload: WebhookPayload) {
         return;
     }
 
-    console.log(`Payment captured for user ${userId}: ${minutes} mins, ${pages} pages`);
+    // Idempotency check: skip if this payment was already processed
+    const existingTransaction = await db.transaction.findUnique({
+        where: { razorpayPaymentId: paymentId },
+    });
+
+    if (existingTransaction) {
+        console.log(`Payment ${paymentId} already processed, skipping duplicate webhook`);
+        return;
+    }
+
+    console.log(`Payment captured for user ${userId}: ${minutes} mins, ${pages} pages, ${chatMessages} chat messages`);
 
     // Update user's balance
     const user = await db.user.findUnique({ where: { id: userId } });
@@ -84,14 +96,13 @@ async function handlePaymentCaptured(payload: WebhookPayload) {
         return;
     }
 
-    // Add minutes and pages to user's balance
+    // Add credits to user's balance
     await db.user.update({
         where: { id: userId },
         data: {
             voiceMinutesLimit: (user.voiceMinutesLimit || 0) + minutes,
             pagesLimit: (user.pagesLimit || 0) + pages,
-            // Set unlimited chat for paid users
-            chatMessagesLimit: 999999,
+            chatMessagesLimit: (user.chatMessagesLimit || 0) + chatMessages,
         },
     });
 
@@ -109,12 +120,13 @@ async function handlePaymentCaptured(payload: WebhookPayload) {
                 planName,
                 minutes,
                 pages,
+                chatMessages,
                 region,
             },
         },
     });
 
-    console.log(`User ${userId} credited: ${minutes} mins, ${pages} pages`);
+    console.log(`User ${userId} credited: ${minutes} mins, ${pages} pages, ${chatMessages} chat messages`);
 }
 
 /**

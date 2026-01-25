@@ -6,18 +6,25 @@ import { getClaims } from '@/lib/session';
 /**
  * Plan definitions for one-time purchases
  * No Razorpay dashboard setup needed - all defined in code
+ *
+ * Pricing based on cost analysis:
+ * - India: ~38-50% margin after costs
+ * - Global: ~42-72% margin after costs
+ *
+ * Amount in paise (INR) or cents (USD)
  */
 const PLANS = {
     india: {
-        starter: { name: 'Starter', amount: 29900, currency: 'INR', minutes: 90, pages: 50 },
-        standard: { name: 'Standard', amount: 59900, currency: 'INR', minutes: 250, pages: 200 },
-        achiever: { name: 'Achiever', amount: 109900, currency: 'INR', minutes: 500, pages: 500 },
-        topup: { name: 'Top-Up', amount: 19900, currency: 'INR', minutes: 60, pages: 0 },
+        starter: { name: 'Starter', amount: 39900, currency: 'INR', minutes: 100, pages: 100, chatMessages: 500 },
+        standard: { name: 'Standard', amount: 69900, currency: 'INR', minutes: 200, pages: 250, chatMessages: 1000 },
+        achiever: { name: 'Achiever', amount: 129900, currency: 'INR', minutes: 350, pages: 500, chatMessages: 1500 },
+        topup: { name: 'Top-Up', amount: 19900, currency: 'INR', minutes: 60, pages: 0, chatMessages: 0 },
     },
     global: {
-        starter: { name: 'Standard', amount: 999, currency: 'USD', minutes: 120, pages: 100 },
-        standard: { name: 'Pro Scholar', amount: 1999, currency: 'USD', minutes: 300, pages: 300 },
-        topup: { name: 'Top-Up', amount: 599, currency: 'USD', minutes: 60, pages: 0 },
+        starter: { name: 'Starter', amount: 999, currency: 'USD', minutes: 120, pages: 150, chatMessages: 500 },
+        standard: { name: 'Standard', amount: 1999, currency: 'USD', minutes: 250, pages: 350, chatMessages: 1000 },
+        achiever: { name: 'Achiever', amount: 2999, currency: 'USD', minutes: 400, pages: 700, chatMessages: 1500 },
+        topup: { name: 'Top-Up', amount: 599, currency: 'USD', minutes: 60, pages: 0, chatMessages: 0 },
     }
 };
 
@@ -46,9 +53,25 @@ export async function POST(request: NextRequest) {
             );
         }
 
-        // Determine region from query param (for testing) or cookie (set by middleware)
-        const url = new URL(request.url);
-        const region = url.searchParams.get('region') || request.cookies.get('region')?.value || 'india';
+        // Determine region:
+        // 1. For new users: Use cookie (set by middleware geo-detection)
+        // 2. For existing users: Use stored User.region from DB
+        const cookieRegion = request.cookies.get('region')?.value || 'india';
+
+        // Upsert user, saving region on first create
+        const user = await db.user.upsert({
+            where: { id: userId },
+            update: {},
+            create: {
+                id: userId,
+                email: claims.email || '',
+                name: claims.email?.split('@')[0] || 'User',
+                region: cookieRegion,  // Save detected region on signup
+            },
+        });
+
+        // Use stored region for pricing (not current location)
+        const region = user.region || cookieRegion;
         const plans = region === 'india' ? PLANS.india : PLANS.global;
 
         const plan = plans[planName as keyof typeof plans];
@@ -58,17 +81,6 @@ export async function POST(request: NextRequest) {
                 { status: 400 }
             );
         }
-
-        // Ensure user exists in DB
-        await db.user.upsert({
-            where: { id: userId },
-            update: {},
-            create: {
-                id: userId,
-                email: claims.email || '',
-                name: claims.email?.split('@')[0] || 'User',
-            },
-        });
 
         // Create Razorpay order
         const order = await razorpay.orders.create({
@@ -81,6 +93,7 @@ export async function POST(request: NextRequest) {
                 region: region,
                 minutes: plan.minutes.toString(),
                 pages: plan.pages.toString(),
+                chatMessages: plan.chatMessages.toString(),
             },
         });
 

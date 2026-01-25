@@ -3,10 +3,28 @@
 
 @custom-variant dark (&:is(.dark *));
 
+/* Custom fonts - Clash Display + Outfit */
+@font-face {
+  font-family: 'Clash Display';
+  src: url('https://cdn.jsdelivr.net/gh/nicotordev/fonts@main/ClashDisplay-Variable.woff2') format('woff2');
+  font-weight: 200 700;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Outfit';
+  src: url('https://fonts.gstatic.com/s/outfit/v11/QGYvz_MVcBeNP4NJuktqQ4E.woff2') format('woff2');
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+}
+
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
+  --font-sans: var(--font-outfit);
+  --font-display: var(--font-clash);
   --font-mono: var(--font-geist-mono);
   --color-sidebar-ring: var(--sidebar-ring);
   --color-sidebar-border: var(--sidebar-border);
@@ -45,85 +63,58 @@
 
 :root {
   --radius: 0.625rem;
-  --background: 0.98 0.01 85;
-  /* #FAF9F6 converted to OKLCH approx or just use hex if supported by the framework setup, but existing uses OKLCH. Let's stick to the user's HEX for precision if possible, or convert. The existing file uses OKLCH. Let's try to use HEX directly if tailwind 4 supports it or convert. Tailwind 4 supports hex. Let's use HEX for exact match as requested. */
-  /* Actually, the file imports "tailwindcss" which usually supports hex in vars if configured. 
-     However, looking at the file, it uses oklch. 
-     #FAF9F6 = oklch(0.98 0.002 100) approx
-     #374151 = oklch(0.4 0.02 260) approx
-     #EA580C = oklch(0.6 0.2 40) approx
-     
-     Wait, the user explicitly gave HEX codes. I should use HEX codes to be precise. 
-     If the previous css used oklch, I can replace it with hex.
-  */
-  --background: #FAF9F6;
-  --foreground: #374151;
-  --card: #FFFFFF;
-  --card-foreground: #374151;
-  --popover: #FFFFFF;
-  --popover-foreground: #374151;
-  --primary: #EA580C;
-  --primary-foreground: #FFFFFF;
-  --secondary: #F3F4F6;
-  /* Light gray for secondary */
-  --secondary-foreground: #1F2937;
-  --muted: #F3F4F6;
-  --muted-foreground: #6B7280;
-  --accent: #F3F4F6;
-  --accent-foreground: #1F2937;
-  --destructive: #EF4444;
-  --destructive-foreground: #FFFFFF;
-  --border: #E5E7EB;
-  --input: #E5E7EB;
-  --ring: #EA580C;
-  --chart-1: #EA580C;
-  --chart-2: #D97706;
-  --chart-3: #B45309;
-  --chart-4: #92400E;
-  --chart-5: #78350F;
-  --sidebar: #FAF9F6;
-  --sidebar-foreground: #374151;
-  --sidebar-primary: #EA580C;
-  --sidebar-primary-foreground: #FFFFFF;
-  --sidebar-accent: #F3F4F6;
-  --sidebar-accent-foreground: #EA580C;
-  --sidebar-border: #E5E7EB;
-  --sidebar-ring: #EA580C;
-}
 
-.dark {
-  --background: #FAF9F6;
-  --foreground: #374151;
-  --card: #FFFFFF;
-  --card-foreground: #374151;
-  --popover: #FFFFFF;
-  --popover-foreground: #374151;
-  --primary: #EA580C;
-  --primary-foreground: #FFFFFF;
-  --secondary: #F3F4F6;
-  --secondary-foreground: #1F2937;
-  --muted: #F3F4F6;
-  --muted-foreground: #6B7280;
-  --accent: #F3F4F6;
-  --accent-foreground: #1F2937;
-  --destructive: #EF4444;
-  --destructive-foreground: #FFFFFF;
+  /* VOXAM Light Theme - Apple-like Blue + White */
+  --background: #ffffff;
+  --foreground: #000000;
+
+  --card: #ffffff;
+  --card-foreground: #000000;
+
+  --popover: #ffffff;
+  --popover-foreground: #000000;
+
+  /* Primary: Clean Blue */
+  --primary: #0066FF;
+  --primary-foreground: #ffffff;
+
+  /* Secondary: Light gray */
+  --secondary: #F4F4F5;
+  --secondary-foreground: #374151;
+
+  --muted: #F4F4F5;
+  --muted-foreground: #71717a;
+
+  /* Accent: Violet */
+  --accent: #8A2BE2;
+  --accent-foreground: #ffffff;
+
+  --destructive: #ef4444;
+  --destructive-foreground: #fafafa;
+
   --border: #E5E7EB;
-  --input: #E5E7EB;
-  --ring: #EA580C;
-  --chart-1: #EA580C;
-  --chart-2: #D97706;
-  --chart-3: #B45309;
-  --chart-4: #92400E;
-  --chart-5: #78350F;
-  --sidebar: #FAF9F6;
-  --sidebar-foreground: #374151;
-  --sidebar-primary: #EA580C;
-  --sidebar-primary-foreground: #FFFFFF;
-  --sidebar-accent: #F3F4F6;
-  --sidebar-accent-foreground: #EA580C;
+  --input: #F4F4F5;
+  --ring: #0066FF;
+
+  /* Chart colors - matching marketing video */
+  --chart-1: #0066FF;
+  --chart-2: #8A2BE2;
+  --chart-3: #10b981;
+  --chart-4: #F59E0B;
+  --chart-5: #EC4899;
+
+  --sidebar: #ffffff;
+  --sidebar-foreground: #000000;
+  --sidebar-primary: #0066FF;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: #F4F4F5;
+  --sidebar-accent-foreground: #0066FF;
   --sidebar-border: #E5E7EB;
-  --sidebar-ring: #EA580C;
+  --sidebar-ring: #0066FF;
+
+  /* Font variables */
+  --font-clash: 'Clash Display', sans-serif;
+  --font-outfit: 'Outfit', sans-serif;
 }
 
 @layer base {
@@ -133,5 +124,189 @@
 
   body {
     @apply bg-background text-foreground;
+    font-family: var(--font-outfit);
   }
+
+  h1, h2, h3, h4, h5, h6 {
+    font-family: var(--font-clash);
+  }
+}
+
+/* Voice Waveform Animation */
+@keyframes wave-pulse {
+  0%, 100% {
+    transform: scaleY(0.3);
+  }
+  50% {
+    transform: scaleY(1);
+  }
+}
+
+@keyframes wave-flow {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(100%);
+  }
+}
+
+@keyframes float {
+  0%, 100% {
+    transform: translateY(0) rotate(0deg);
+  }
+  33% {
+    transform: translateY(-20px) rotate(5deg);
+  }
+  66% {
+    transform: translateY(-10px) rotate(-3deg);
+  }
+}
+
+@keyframes pulse-glow {
+  0%, 100% {
+    opacity: 0.4;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.8;
+    transform: scale(1.05);
+  }
+}
+
+@keyframes gradient-shift {
+  0% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
+  100% {
+    background-position: 0% 50%;
+  }
+}
+
+/* Noise texture overlay */
+.noise-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 9999;
+  opacity: 0.03;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)'/%3E%3C/svg%3E");
+}
+
+/* Glow effects */
+.glow-blue {
+  box-shadow: 0 0 60px rgba(0, 102, 255, 0.3), 0 0 100px rgba(0, 102, 255, 0.1);
+}
+
+.glow-violet {
+  box-shadow: 0 0 60px rgba(138, 43, 226, 0.3), 0 0 100px rgba(138, 43, 226, 0.1);
+}
+
+.text-gradient {
+  background: linear-gradient(135deg, #0066FF 0%, #8A2BE2 100%);
+  background-size: 200% 200%;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  animation: gradient-shift 8s ease infinite;
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: #F4F4F5;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #D1D5DB;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #9CA3AF;
+}
+
+/* Selection color */
+::selection {
+  background: rgba(0, 102, 255, 0.2);
+  color: #000000;
+}
+
+/* Driver.js Tour Customization */
+.driver-popover {
+  background: #ffffff !important;
+  color: #000000 !important;
+  border: 1px solid #E5E7EB !important;
+  border-radius: 12px !important;
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.15), 0 0 60px rgba(0, 102, 255, 0.1) !important;
+}
+
+.driver-popover-title {
+  font-family: var(--font-clash) !important;
+  color: #000000 !important;
+  font-size: 1.125rem !important;
+  font-weight: 600 !important;
+}
+
+.driver-popover-description {
+  font-family: var(--font-outfit) !important;
+  color: #374151 !important;
+  font-size: 0.9rem !important;
+  line-height: 1.6 !important;
+}
+
+.driver-popover-progress-text {
+  color: #71717a !important;
+  font-size: 0.75rem !important;
+}
+
+.driver-popover-navigation-btns button {
+  font-family: var(--font-outfit) !important;
+  border-radius: 8px !important;
+  padding: 8px 16px !important;
+  font-weight: 500 !important;
+  transition: all 0.2s ease !important;
+}
+
+.driver-popover-prev-btn {
+  background: transparent !important;
+  color: #374151 !important;
+  border: 1px solid #E5E7EB !important;
+}
+
+.driver-popover-prev-btn:hover {
+  background: #F4F4F5 !important;
+  color: #000000 !important;
+}
+
+.driver-popover-next-btn,
+.driver-popover-close-btn {
+  background: #0066FF !important;
+  color: #ffffff !important;
+  border: none !important;
+}
+
+.driver-popover-next-btn:hover,
+.driver-popover-close-btn:hover {
+  background: #0052CC !important;
+}
+
+.driver-popover-arrow-side-left.driver-popover-arrow,
+.driver-popover-arrow-side-right.driver-popover-arrow,
+.driver-popover-arrow-side-top.driver-popover-arrow,
+.driver-popover-arrow-side-bottom.driver-popover-arrow {
+  border-color: #ffffff !important;
+}
+
+.driver-overlay {
+  background: rgba(0, 0, 0, 0.5) !important;
 }

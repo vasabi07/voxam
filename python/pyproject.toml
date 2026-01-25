@@ -23,7 +23,6 @@ dependencies = [
     "python-dotenv>=1.1.1",
     "python-jose[cryptography]>=3.5.0",
     "redis>=6.4.0",
-    "unstructured[all-docs]>=0.18.3",
     "uvicorn>=0.34.3",
     "websockets>=15.0.1",
     "livekit>=0.17.5",
@@ -32,4 +31,57 @@ dependencies = [
     "celery>=5.6.0",
     "supabase>=2.24.0",
     "google-genai>=1.56.0",
+    "pdf2image>=1.17.0",
+    "langchain-google-genai>=2.0.0",
+    "pymupdf>=1.25.0",
+    "tavily-python>=0.5.0",
+    # Lightweight document extractors (replace Unstructured for DOCX/PPTX)
+    "python-docx>=1.1.0",
+    "python-pptx>=1.0.0",
 ]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0.0",
+    "pytest-asyncio>=0.23.0",
+    "pytest-cov>=4.1.0",
+    "fakeredis>=2.20.0",
+    "httpx>=0.27.0",
+]
+# Legacy fallback - only install if you need Unstructured's advanced parsing
+# Includes Tesseract OCR dependency (requires system package: tesseract-ocr)
+legacy = [
+    "unstructured[all-docs]>=0.18.3",
+]
+
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+# Explicitly specify packages for flat layout
+py-modules = []
+
+[tool.setuptools.packages.find]
+include = ["lib*", "agents*", "tasks*"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+python_files = "test_*.py"
+python_functions = "test_*"
+addopts = "-v --tb=short"
+filterwarnings = [
+    "ignore::DeprecationWarning",
+]
+
+[tool.coverage.run]
+source = ["."]
+omit = ["tests/*", "*.pyc", "__pycache__/*"]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "if __name__ == .__main__.:",
+]
+

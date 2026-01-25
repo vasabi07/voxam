@@ -7,64 +7,91 @@ import Link from "next/link";
 import { signIn } from "@/lib/auth-client";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { loginSchema, type LoginInput } from "@/lib/schemas/auth";
+import { cn } from "@/lib/utils";
 
 const LoginForm = () => {
   const [isPending, setIspending] = useState(false);
   const router = useRouter();
 
-  const handleSubmit = async (evt: React.FormEvent<HTMLFormElement>) => {
-    evt.preventDefault();
-    const formData = new FormData(evt.target as HTMLFormElement);
-    const email = String(formData.get("email"));
-    if (!email) return toast.error("Please enter your email");
+  const {
+    register,
+    handleSubmit,
+    formState: { errors },
+  } = useForm<LoginInput>({
+    resolver: zodResolver(loginSchema),
+    defaultValues: {
+      email: "",
+      password: "",
+    },
+  });
 
-    const password = String(formData.get("password"));
-    if (!password) return toast.error("Please enter your password");
-
+  const onSubmit = async (data: LoginInput) => {
     await signIn.email(
       {
-        email,
-        password,
+        email: data.email,
+        password: data.password,
       },
       {
         onRequest: () => setIspending(true),
         onResponse: () => setIspending(false),
-        onError: (ctx) =>{ toast.error(ctx.error.message)},
+        onError: (ctx) => { toast.error(ctx.error.message); },
         onSuccess: () => router.push("/profile"),
       }
     );
   };
 
   return (
-    <div className="max-w-sm w-full mx-auto mt-10 space-y-6 border rounded-xl shadow-md px-8 py-6 bg-white dark:bg-zinc-950">
-      
+    <div className="max-w-sm w-full mx-auto mt-10 space-y-6 border rounded-xl shadow-md px-8 py-6 bg-white">
+
       <div className="space-y-1 text-center mb-2">
         <h1 className="text-3xl font-bold">Welcome back</h1>
         <p className="text-muted-foreground text-base">Sign in to your account</p>
       </div>
 
-      <form onSubmit={handleSubmit} className="space-y-4">
+      <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
         <div className="space-y-2">
           <Label htmlFor="email">Email</Label>
-          <Input id="email" name="email" autoComplete="email" />
+          <Input
+            id="email"
+            autoComplete="email"
+            {...register("email")}
+            aria-invalid={!!errors.email}
+            className={cn(errors.email && "border-red-500 focus-visible:ring-red-500")}
+          />
+          {errors.email && (
+            <p className="text-sm text-red-500">{errors.email.message}</p>
+          )}
         </div>
         <div className="space-y-2">
           <Label htmlFor="password">Password</Label>
-          <Input type="password" id="password" name="password" autoComplete="current-password" />
+          <Input
+            type="password"
+            id="password"
+            autoComplete="current-password"
+            {...register("password")}
+            aria-invalid={!!errors.password}
+            className={cn(errors.password && "border-red-500 focus-visible:ring-red-500")}
+          />
+          {errors.password && (
+            <p className="text-sm text-red-500">{errors.password.message}</p>
+          )}
         </div>
         <Button type="submit" className="w-full" disabled={isPending}>
-          Login
+          {isPending ? "Signing in..." : "Login"}
         </Button>
       </form>
 
-      
+
       <div className="flex items-center gap-3 text-muted-foreground my-4">
         <div className="h-px bg-gray-300 flex-1" />
         <span className="text-sm font-medium">Or continue with</span>
         <div className="h-px bg-gray-300 flex-1" />
       </div>
 
-      
+
       <Button
         variant="outline"
         className="w-full flex items-center justify-center gap-2 bg-black text-white"
@@ -101,7 +128,7 @@ const LoginForm = () => {
         Continue with Google
       </Button>
 
-      
+
       <p className="text-center text-sm text-muted-foreground mt-6">
         Don&apos;t have an account?{" "}
         <Link

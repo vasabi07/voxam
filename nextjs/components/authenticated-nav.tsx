@@ -9,7 +9,9 @@ import {
     GraduationCap,
     FileText,
     LogOut,
-    Mic
+    Mic,
+    CreditCard,
+    Settings
 } from "lucide-react"
 import { createClient } from '@/lib/supabase/client'
 import { useRouter } from 'next/navigation'
@@ -29,17 +31,32 @@ export function AuthenticatedNavbar() {
         {
             name: 'Chat',
             href: '/authenticated/chat',
-            icon: MessageSquare
+            icon: MessageSquare,
+            tourId: 'chat'
         },
         {
             name: 'Exam',
             href: '/authenticated/exam',
-            icon: GraduationCap
+            icon: GraduationCap,
+            tourId: 'exam'
         },
         {
             name: 'Documents',
             href: '/authenticated/documents',
-            icon: FileText
+            icon: FileText,
+            tourId: 'documents'
+        },
+        {
+            name: 'Credits',
+            href: '/authenticated/pricing',
+            icon: CreditCard,
+            tourId: 'credits'
+        },
+        {
+            name: 'Settings',
+            href: '/authenticated/settings',
+            icon: Settings,
+            tourId: 'settings'
         }
     ]
 
@@ -65,6 +82,7 @@ export function AuthenticatedNavbar() {
                                 <Button
                                     variant={isActive ? "secondary" : "ghost"}
                                     size="sm"
+                                    data-tour={item.tourId}
                                     className={cn(
                                         "gap-2",
                                         isActive && "bg-secondary text-secondary-foreground"

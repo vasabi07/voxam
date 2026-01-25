@@ -2,28 +2,87 @@
 
 import { createClient } from '@/lib/supabase/client'
 import { useState } from 'react'
+import { useRouter } from 'next/navigation'
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
-import { Mic, ArrowLeft } from "lucide-react"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import { Separator } from "@/components/ui/separator"
+import { Mic, ArrowLeft, Mail, Lock, Eye, EyeOff } from "lucide-react"
 import Link from 'next/link'
+import { toast } from 'sonner'
+
+type AuthMode = 'signin' | 'signup'
 
 export default function LoginPage() {
+  const router = useRouter()
   const [loading, setLoading] = useState(false)
+  const [googleLoading, setGoogleLoading] = useState(false)
+  const [mode, setMode] = useState<AuthMode>('signin')
+  const [showPassword, setShowPassword] = useState(false)
 
-  const handleLogin = async () => {
-    setLoading(true)
+  const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
+  const [name, setName] = useState('')
+
+  const handleGoogleLogin = async () => {
+    setGoogleLoading(true)
     const supabase = createClient()
 
     const { error } = await supabase.auth.signInWithOAuth({
       provider: 'google',
       options: {
-        // This redirects to your callback route after Google login
         redirectTo: `${location.origin}/auth/callback`,
       },
     })
 
     if (error) {
       console.error('Login error:', error.message)
+      toast.error('Failed to sign in with Google')
+      setGoogleLoading(false)
+    }
+  }
+
+  const handleEmailAuth = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setLoading(true)
+
+    const supabase = createClient()
+
+    try {
+      if (mode === 'signup') {
+        const { error } = await supabase.auth.signUp({
+          email,
+          password,
+          options: {
+            data: { name },
+            emailRedirectTo: `${location.origin}/auth/callback`,
+          },
+        })
+
+        if (error) throw error
+
+        toast.success('Check your email!', {
+          description: 'We sent you a confirmation link to verify your account.',
+        })
+      } else {
+        const { error } = await supabase.auth.signInWithPassword({
+          email,
+          password,
+        })
+
+        if (error) throw error
+
+        toast.success('Welcome back!')
+        router.push('/authenticated/chat')
+        router.refresh()
+      }
+    } catch (error) {
+      console.error('Auth error:', error)
+      toast.error(mode === 'signup' ? 'Failed to sign up' : 'Failed to sign in', {
+        description: error instanceof Error ? error.message : 'Please try again',
+      })
+    } finally {
       setLoading(false)
     }
   }
@@ -43,19 +102,26 @@ export default function LoginPage() {
           <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-xl bg-primary/10 text-primary">
             <Mic className="h-6 w-6" />
           </div>
-          <CardTitle className="text-2xl font-bold">Welcome back</CardTitle>
+          <CardTitle className="text-2xl font-bold">
+            {mode === 'signin' ? 'Welcome back' : 'Create an account'}
+          </CardTitle>
           <CardDescription>
-            Sign in to your account to continue your learning journey
+            {mode === 'signin'
+              ? 'Sign in to continue your learning journey'
+              : 'Start your AI-powered exam preparation'
+            }
           </CardDescription>
         </CardHeader>
+
         <CardContent className="grid gap-4">
+          {/* Google Sign In */}
           <Button
             variant="outline"
             className="relative h-12 w-full border-muted-foreground/20 hover:bg-muted/50"
-            onClick={handleLogin}
-            disabled={loading}
+            onClick={handleGoogleLogin}
+            disabled={googleLoading || loading}
           >
-            {loading ? (
+            {googleLoading ? (
               <div className="flex items-center gap-2">
                 <div className="h-4 w-4 animate-spin rounded-full border-2 border-primary border-t-transparent"></div>
                 <span>Connecting...</span>
@@ -80,14 +146,137 @@ export default function LoginPage() {
                     fill="#EA4335"
                   />
                 </svg>
-                <span className="text-base font-medium">Sign in with Google</span>
+                <span className="text-base font-medium">Continue with Google</span>
               </div>
             )}
           </Button>
+
+          <div className="relative">
+            <div className="absolute inset-0 flex items-center">
+              <Separator />
+            </div>
+            <div className="relative flex justify-center text-xs uppercase">
+              <span className="bg-background px-2 text-muted-foreground">
+                Or continue with email
+              </span>
+            </div>
+          </div>
+
+          {/* Email/Password Form */}
+          <form onSubmit={handleEmailAuth} className="space-y-4">
+            {mode === 'signup' && (
+              <div className="space-y-2">
+                <Label htmlFor="name">Name</Label>
+                <Input
+                  id="name"
+                  type="text"
+                  placeholder="Your name"
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  disabled={loading}
+                />
+              </div>
+            )}
+
+            <div className="space-y-2">
+              <Label htmlFor="email">Email</Label>
+              <div className="relative">
+                <Mail className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  id="email"
+                  type="email"
+                  placeholder="you@example.com"
+                  className="pl-10"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  required
+                  disabled={loading}
+                />
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <Label htmlFor="password">Password</Label>
+                {mode === 'signin' && (
+                  <Link
+                    href="/forgot-password"
+                    className="text-xs text-primary hover:underline"
+                  >
+                    Forgot password?
+                  </Link>
+                )}
+              </div>
+              <div className="relative">
+                <Lock className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  id="password"
+                  type={showPassword ? 'text' : 'password'}
+                  placeholder="Enter your password"
+                  className="pl-10 pr-10"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  required
+                  minLength={6}
+                  disabled={loading}
+                />
+                <button
+                  type="button"
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                  onClick={() => setShowPassword(!showPassword)}
+                >
+                  {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                </button>
+              </div>
+            </div>
+
+            <Button
+              type="submit"
+              className="w-full h-11"
+              disabled={loading || googleLoading}
+            >
+              {loading ? (
+                <div className="flex items-center gap-2">
+                  <div className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent"></div>
+                  <span>{mode === 'signin' ? 'Signing in...' : 'Creating account...'}</span>
+                </div>
+              ) : (
+                mode === 'signin' ? 'Sign In' : 'Create Account'
+              )}
+            </Button>
+          </form>
+
+          {/* Toggle Mode */}
+          <p className="text-center text-sm text-muted-foreground">
+            {mode === 'signin' ? (
+              <>
+                Don&apos;t have an account?{' '}
+                <button
+                  type="button"
+                  className="text-primary hover:underline font-medium"
+                  onClick={() => setMode('signup')}
+                >
+                  Sign up
+                </button>
+              </>
+            ) : (
+              <>
+                Already have an account?{' '}
+                <button
+                  type="button"
+                  className="text-primary hover:underline font-medium"
+                  onClick={() => setMode('signin')}
+                >
+                  Sign in
+                </button>
+              </>
+            )}
+          </p>
         </CardContent>
-        <CardFooter className="flex flex-col gap-2 text-center text-sm text-muted-foreground">
+
+        <CardFooter className="flex flex-col gap-2 text-center text-xs text-muted-foreground">
           <p>
-            By clicking continue, you agree to our{" "}
+            By continuing, you agree to our{" "}
             <Link href="/terms" className="underline hover:text-primary">
               Terms of Service
             </Link>{" "}

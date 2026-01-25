@@ -48,8 +48,8 @@ celery_app.conf.update(
     worker_concurrency=2,  # 2 workers for ingestion tasks
 )
 
-# Optional: Task routing for different queues
-celery_app.conf.task_routes = {
-    "tasks.ingestion.*": {"queue": "ingestion"},
-    "tasks.correction.*": {"queue": "correction"},
-}
+# NOTE: Add task routing when you need to scale different task types independently
+# celery_app.conf.task_routes = {
+#     "tasks.ingestion.*": {"queue": "ingestion"},
+#     "tasks.correction.*": {"queue": "correction"},
+# }

@@ -7,28 +7,34 @@ import Link from "next/link";
 import { signIn, signUp } from "@/lib/auth-client";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { registerSchema, type RegisterInput } from "@/lib/schemas/auth";
+import { cn } from "@/lib/utils";
 
 const RegisterForm = () => {
   const [isPending, setIspending] = useState(false);
   const router = useRouter();
 
-  const handleSubmit = async (evt: React.FormEvent<HTMLFormElement>) => {
-    evt.preventDefault();
-    const formData = new FormData(evt.target as HTMLFormElement);
-    const name = String(formData.get("name"));
-    if (!name) return toast.error("Please enter your name");
+  const {
+    register,
+    handleSubmit,
+    formState: { errors },
+  } = useForm<RegisterInput>({
+    resolver: zodResolver(registerSchema),
+    defaultValues: {
+      name: "",
+      email: "",
+      password: "",
+    },
+  });
 
-    const email = String(formData.get("email"));
-    if (!email) return toast.error("Please enter your email");
-
-    const password = String(formData.get("password"));
-    if (!password) return toast.error("Please enter your password");
-
+  const onSubmit = async (data: RegisterInput) => {
     await signUp.email(
       {
-        name,
-        email,
-        password,
+        name: data.name,
+        email: data.email,
+        password: data.password,
       },
       {
         onRequest: () => setIspending(true),
@@ -40,39 +46,67 @@ const RegisterForm = () => {
   };
 
   return (
-    <div className="max-w-sm w-full mx-auto mt-10 space-y-6 border rounded-xl shadow-md px-8 py-6 bg-white dark:bg-zinc-950">
-      
+    <div className="max-w-sm w-full mx-auto mt-10 space-y-6 border rounded-xl shadow-md px-8 py-6 bg-white">
+
       <div className="space-y-1 text-center mb-2">
-        <h1 className="text-3xl font-bold">Let’s get started</h1>
+        <h1 className="text-3xl font-bold">Let&apos;s get started</h1>
         <p className="text-muted-foreground text-base">Create your account</p>
       </div>
 
-      <form onSubmit={handleSubmit} className="space-y-4">
+      <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
         <div className="space-y-2">
           <Label htmlFor="name">Name</Label>
-          <Input id="name" name="name" autoComplete="name" />
+          <Input
+            id="name"
+            autoComplete="name"
+            {...register("name")}
+            aria-invalid={!!errors.name}
+            className={cn(errors.name && "border-red-500 focus-visible:ring-red-500")}
+          />
+          {errors.name && (
+            <p className="text-sm text-red-500">{errors.name.message}</p>
+          )}
         </div>
         <div className="space-y-2">
           <Label htmlFor="email">Email</Label>
-          <Input id="email" name="email" autoComplete="email" />
+          <Input
+            id="email"
+            autoComplete="email"
+            {...register("email")}
+            aria-invalid={!!errors.email}
+            className={cn(errors.email && "border-red-500 focus-visible:ring-red-500")}
+          />
+          {errors.email && (
+            <p className="text-sm text-red-500">{errors.email.message}</p>
+          )}
         </div>
         <div className="space-y-2">
           <Label htmlFor="password">Password</Label>
-          <Input type="password" id="password" name="password" autoComplete="new-password" />
+          <Input
+            type="password"
+            id="password"
+            autoComplete="new-password"
+            {...register("password")}
+            aria-invalid={!!errors.password}
+            className={cn(errors.password && "border-red-500 focus-visible:ring-red-500")}
+          />
+          {errors.password && (
+            <p className="text-sm text-red-500">{errors.password.message}</p>
+          )}
         </div>
         <Button type="submit" className="w-full" disabled={isPending}>
-          Register
+          {isPending ? "Creating account..." : "Register"}
         </Button>
       </form>
 
-     
+
       <div className="flex items-center gap-3 text-muted-foreground my-4">
         <div className="h-px bg-gray-300 flex-1" />
         <span className="text-sm font-medium">Or continue with</span>
         <div className="h-px bg-gray-300 flex-1" />
       </div>
 
-      
+
       <Button
         variant="outline"
         className="w-full flex items-center justify-center gap-2  bg-black text-white"
@@ -109,7 +143,7 @@ const RegisterForm = () => {
         Continue with Google
       </Button>
 
-      
+
       <p className="text-center text-sm text-muted-foreground mt-6">
         Already have an account?{" "}
         <Link

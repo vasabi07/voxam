@@ -1,0 +1,77 @@
+{
+  "instructions": "\nSCORING GUIDE (1-10 scale):\n\nTEXT ACCURACY:\n- 10: Perfect extraction, no errors\n- 7-9: Minor errors (punctuation, spacing)\n- 4-6: Some words/sentences wrong\n- 1-3: Major portions incorrect or missing\n\nTABLE EXTRACTION:\n- 10: Perfect markdown tables\n- 7-9: Tables present, minor formatting issues\n- 4-6: Tables partially extracted\n- 1-3: Tables not recognized or badly mangled\n\nEQUATION/FORMULA:\n- 10: Perfect LaTeX, renders correctly\n- 7-9: LaTeX with minor errors\n- 4-6: Some equations as plain text\n- 1-3: Equations missing or unreadable\n\nDIAGRAM HANDLING:\n- 10: Accurate descriptions of all figures\n- 7-9: Most figures described\n- 4-6: Some figures noted\n- 1-3: Figures ignored or wrong\n",
+  "scores": [
+    {
+      "model": "granite-docling",
+      "document": "cs",
+      "text_accuracy": 0,
+      "table_extraction": 0,
+      "equation_formula": 0,
+      "diagram_handling": 0,
+      "notes": ""
+    },
+    {
+      "model": "granite-docling",
+      "document": "physics",
+      "text_accuracy": 0,
+      "table_extraction": 0,
+      "equation_formula": 0,
+      "diagram_handling": 0,
+      "notes": ""
+    },
+    {
+      "model": "granite-docling",
+      "document": "chemistry",
+      "text_accuracy": 0,
+      "table_extraction": 0,
+      "equation_formula": 0,
+      "diagram_handling": 0,
+      "notes": ""
+    },
+    {
+      "model": "granite-docling",
+      "document": "biology",
+      "text_accuracy": 0,
+      "table_extraction": 0,
+      "equation_formula": 0,
+      "diagram_handling": 0,
+      "notes": ""
+    },
+    {
+      "model": "deepinfra_olmocr2",
+      "document": "cs",
+      "text_accuracy": 0,
+      "table_extraction": 0,
+      "equation_formula": 0,
+      "diagram_handling": 0,
+      "notes": ""
+    },
+    {
+      "model": "deepinfra_olmocr2",
+      "document": "physics",
+      "text_accuracy": 0,
+      "table_extraction": 0,
+      "equation_formula": 0,
+      "diagram_handling": 0,
+      "notes": ""
+    },
+    {
+      "model": "deepinfra_olmocr2",
+      "document": "chemistry",
+      "text_accuracy": 0,
+      "table_extraction": 0,
+      "equation_formula": 0,
+      "diagram_handling": 0,
+      "notes": ""
+    },
+    {
+      "model": "deepinfra_olmocr2",
+      "document": "biology",
+      "text_accuracy": 0,
+      "table_extraction": 0,
+      "equation_formula": 0,
+      "diagram_handling": 0,
+      "notes": ""
+    }
+  ]
+}

@@ -4,8 +4,7 @@ import httpx
 import os
 import uuid
 
-async def get_file(file_key: str,expires_in: int = 60):
-    os.makedirs("./content", exist_ok=True)
+async def get_file(file_key: str, expires_in: int = 60):
     session = boto3.session.Session()
     r2 = session.client(
         service_name='s3',
@@ -23,13 +22,18 @@ async def get_file(file_key: str,expires_in: int = 60):
         },
         ExpiresIn=expires_in
     )
+
+    # Create output path - use just the filename, not full key path
+    filename = os.path.basename(file_key)
+    output_path = f"./content/{filename}"
+    os.makedirs("./content", exist_ok=True)
+
     async with httpx.AsyncClient() as client:
         response = await client.get(signed_url)
-        filename = f"{file_key}.pdf"
-        output_path = f"./content/{filename}"
+
     if response.status_code == 200:
-        with open(output_path,"wb") as f:
+        with open(output_path, "wb") as f:
             f.write(response.content)
-        return filename
+        return output_path
     else:
         raise Exception(f"Failed to download file: {response.status_code} - {response.text}")

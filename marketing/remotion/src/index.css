@@ -1,0 +1,49 @@
+@import "tailwindcss";
+
+/* VOXAM Brand Colors - Recording Studio Aesthetic */
+:root {
+  /* Primary: Warm Coral - audio meter peaks */
+  --primary: #ff6b5b;
+  --primary-foreground: #0a0a0f;
+
+  /* Accent: Cyan - recording studio lights */
+  --accent: #06b6d4;
+
+  /* Background: Deep dark */
+  --background: #0a0a0f;
+  --foreground: #f4f4f5;
+
+  /* Card: Charcoal */
+  --card: #141419;
+  --secondary: #1e1e26;
+  --border: #27272a;
+  --muted: #71717a;
+}
+
+/* Utility classes */
+.text-primary { color: var(--primary); }
+.text-accent { color: var(--accent); }
+.text-foreground { color: var(--foreground); }
+.text-muted { color: var(--muted); }
+
+.bg-primary { background-color: var(--primary); }
+.bg-accent { background-color: var(--accent); }
+.bg-background { background-color: var(--background); }
+.bg-card { background-color: var(--card); }
+.bg-secondary { background-color: var(--secondary); }
+
+/* Gradient text */
+.bg-clip-text {
+  -webkit-background-clip: text;
+  background-clip: text;
+}
+.text-transparent { color: transparent; }
+
+/* Text gradient utility - coral to cyan */
+.text-gradient {
+  background: linear-gradient(135deg, #ff6b5b 0%, #f59e0b 50%, #06b6d4 100%);
+  background-size: 200% 200%;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}

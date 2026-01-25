@@ -1,0 +1,15 @@
+<speak>
+Turn your notes <break time="800ms"/> into exam practice.
+<break time="1500ms"/>
+Introducing VOXAM.
+<break time="500ms"/>
+Upload any study material. <break time="400ms"/> PDFs, textbooks, or notes.
+<break time="500ms"/>
+Just ask <break time="500ms"/> to create an exam. <break time="300ms"/> VOXAM generates questions instantly.
+<break time="500ms"/>
+Practice with your voice. <break time="400ms"/> Speak naturally <break time="300ms"/> AI listens and responds.
+<break time="500ms"/>
+Get instant feedback <break time="1000ms"/> and know exactly where to improve.
+<break time="500ms"/>
+Try free at voxam.in
+</speak>
