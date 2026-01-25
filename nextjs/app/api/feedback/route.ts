@@ -1,7 +1,6 @@
 import { Resend } from 'resend'
 import { NextRequest, NextResponse } from 'next/server'
-import { auth } from '@/lib/auth'
-import { headers } from 'next/headers'
+import { createClient } from '@/lib/supabase/server'
 
 const resend = new Resend(process.env.RESEND_API_KEY)
 
@@ -11,8 +10,8 @@ const FROM_EMAIL = process.env.RESEND_FROM_EMAIL || 'VOXAM Feedback <feedback@vo
 
 export async function POST(req: NextRequest) {
   try {
-    const headersList = await headers()
-    const session = await auth.api.getSession({ headers: headersList })
+    const supabase = await createClient()
+    const { data: { user } } = await supabase.auth.getUser()
     const { type, message, url } = await req.json()
 
     if (!message || !type) {
@@ -22,9 +21,9 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    const userEmail = session?.user?.email || 'Anonymous'
-    const userName = session?.user?.name || 'Anonymous User'
-    const userId = session?.user?.id || 'N/A'
+    const userEmail = user?.email || 'Anonymous'
+    const userName = user?.user_metadata?.name || 'Anonymous User'
+    const userId = user?.id || 'N/A'
 
     const typeEmojiMap: Record<string, string> = {
       bug: '🐛',
