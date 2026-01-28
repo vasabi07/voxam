@@ -1,0 +1,33 @@
+# VOXAM - AI Voice Examination Platform
+
+## What is VOXAM?
+VOXAM is an AI-powered educational platform that helps students learn through voice-based examinations. Instead of passive reading, students actively explain concepts to an AI tutor that listens, adapts, and provides instant feedback.
+
+## Key Features
+- **Voice Exams**: Real-time spoken Q&A with AI examiner
+- **Document Upload**: Support for PDFs, textbooks, lecture notes
+- **AI Question Generation**: Automatic creation of exam questions from uploaded materials
+- **Chat Mode**: Text-based alternative for those who prefer typing
+- **Instant Feedback**: Detailed correction reports after each session
+- **Adaptive Difficulty**: Questions adjust based on student performance
+
+## Target Users
+- Medical students (anatomy, physiology, clinical viva)
+- Engineering students (conceptual subjects)
+- Law students (case analysis, moot court prep)
+- High school students (all subjects)
+
+## Technology
+- Speech-to-Text: Deepgram Nova-3 (supports Indian languages: Tamil, Telugu, Kannada, etc.)
+- AI Models: Google Gemini, OpenAI
+- Real-time: LiveKit WebRTC
+- Built with: Next.js, FastAPI, LangGraph
+
+## Company
+- Founder: Vasanthan Arutselvan
+- Contact: vasanthan@voxam.in
+- Website: https://voxam.in
+- Location: Chennai, India
+
+## Business Model
+Pay-per-use credits (no subscription). Free trial: 15 minutes voice exam.

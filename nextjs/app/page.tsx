@@ -992,6 +992,16 @@ export default function Home() {
                 <li><a href="#" className="hover:text-foreground transition-colors">Terms</a></li>
               </ul>
             </div>
+            <div>
+              <h3 className="font-semibold mb-4">Contact</h3>
+              <ul className="space-y-3 text-sm text-muted-foreground">
+                <li>
+                  <a href="mailto:vasanthan@voxam.in" className="hover:text-foreground transition-colors">
+                    vasanthan@voxam.in
+                  </a>
+                </li>
+              </ul>
+            </div>
           </div>
           <div className="flex flex-col md:flex-row justify-between items-center pt-8 border-t border-border/40 text-sm text-muted-foreground">
             <p>© 2025 VOXAM. All rights reserved.</p>

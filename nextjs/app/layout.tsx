@@ -15,8 +15,25 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "VOXAM - AI Exam Platform",
-  description: "AI-powered examination and learning platform",
+  title: "VOXAM - AI Voice Examination Platform for Students",
+  description:
+    "VOXAM is an AI-powered voice examination platform. Upload study materials, take voice-based exams with an AI tutor, and get instant feedback. Built for medical, engineering, law, and high school students.",
+  keywords: [
+    "AI exam",
+    "voice learning",
+    "study platform",
+    "AI tutor",
+    "exam preparation",
+  ],
+  authors: [{ name: "Vasanthan Arutselvan" }],
+  openGraph: {
+    title: "VOXAM - Learn by Speaking",
+    description:
+      "Stop re-reading notes. Start explaining them. AI-powered voice examinations.",
+    url: "https://voxam.in",
+    siteName: "VOXAM",
+    type: "website",
+  },
 };
 
 export default function RootLayout({
