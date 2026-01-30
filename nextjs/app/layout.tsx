@@ -26,6 +26,9 @@ export const metadata: Metadata = {
     "exam preparation",
   ],
   authors: [{ name: "Vasanthan Arutselvan" }],
+  verification: {
+    google: "Fx9d82WAVdIJXteK16UsCtYdRkBMERBEyDoUc3Ada9U",
+  },
   openGraph: {
     title: "VOXAM - Learn by Speaking",
     description:
