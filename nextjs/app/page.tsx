@@ -276,9 +276,9 @@ export default function Home() {
             <Image
               src="/logo-full.png"
               alt="VOXAM"
-              width={140}
-              height={40}
-              className="h-10 w-auto"
+              width={180}
+              height={50}
+              className="h-14 w-auto"
               priority
             />
           </Link>
@@ -441,34 +441,6 @@ export default function Home() {
           </motion.div>
         </section>
 
-        {/* Trust Badges */}
-        <section className="py-12 border-b border-border/40">
-          <div className="container mx-auto px-6">
-            <motion.div
-              className="flex flex-col items-center justify-center gap-4"
-              initial={{ opacity: 0, y: 20 }}
-              whileInView={{ opacity: 1, y: 0 }}
-              viewport={{ once: true }}
-              transition={{ duration: 0.6 }}
-            >
-              <p className="text-sm text-muted-foreground">Backed by</p>
-              <div className="flex items-center gap-8">
-                <a
-                  href="https://deepgram.com/startup-program"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="flex items-center gap-2 text-muted-foreground hover:text-foreground transition-colors"
-                >
-                  <svg viewBox="0 0 24 24" className="h-6 w-6" fill="currentColor">
-                    <path d="M12.003 0C5.379 0 .006 5.373.006 12s5.373 12 11.997 12c6.628 0 11.997-5.373 11.997-12S18.63 0 12.003 0zm4.457 16.822h-2.48v-2.353h2.48v2.353zm0-3.63h-2.48V7.178h2.48v6.014zm-3.731 3.63H10.25v-2.353h2.479v2.353zm0-3.63H10.25V7.178h2.479v6.014zm-3.731 3.63H6.519v-2.353h2.479v2.353zm0-3.63H6.519V7.178h2.479v6.014z"/>
-                  </svg>
-                  <span className="text-sm font-medium">Deepgram Startup Program</span>
-                </a>
-              </div>
-            </motion.div>
-          </div>
-        </section>
-
         {/* Features Section */}
         <section id="features" className="py-32 relative">
           <div className="container mx-auto px-6">
@@ -533,6 +505,30 @@ export default function Home() {
                 delay={0.5}
               />
             </div>
+          </div>
+        </section>
+
+        {/* Trust Badges */}
+        <section className="py-16 border-y border-border/40">
+          <div className="container mx-auto px-6">
+            <motion.div
+              className="flex flex-col items-center justify-center gap-4"
+              initial={{ opacity: 0, y: 20 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              viewport={{ once: true }}
+              transition={{ duration: 0.6 }}
+            >
+              <p className="text-sm text-muted-foreground">Backed by</p>
+              <div className="flex items-center gap-8">
+                <Image
+                  src="/startupbanner_deepgram.png"
+                  alt="Deepgram Startup Community - Building Success Together"
+                  width={400}
+                  height={200}
+                  className="h-24 w-auto rounded-lg"
+                />
+              </div>
+            </motion.div>
           </div>
         </section>
 
