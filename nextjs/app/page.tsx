@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
+import Image from 'next/image'
 import { motion, useScroll, useTransform, useInView } from 'motion/react'
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -18,7 +19,6 @@ import {
   Zap,
   Target,
   Layers,
-  Volume2,
   MessageSquare,
   Stethoscope,
   Scale,
@@ -272,14 +272,15 @@ export default function Home() {
       <header className="fixed top-0 z-50 w-full">
         <div className="absolute inset-0 bg-background/60 backdrop-blur-xl border-b border-border/40" />
         <div className="relative container mx-auto flex h-20 items-center justify-between px-6">
-          <Link href="/" className="flex items-center gap-3 group">
-            <div className="relative">
-              <div className="absolute inset-0 bg-primary/50 blur-xl opacity-0 group-hover:opacity-100 transition-opacity" />
-              <div className="relative flex h-10 w-10 items-center justify-center rounded-xl bg-primary text-primary-foreground">
-                <Volume2 className="h-5 w-5" />
-              </div>
-            </div>
-            <span className="text-xl font-bold tracking-tight">VOXAM</span>
+          <Link href="/" className="flex items-center gap-2 group">
+            <Image
+              src="/logo-full.png"
+              alt="VOXAM"
+              width={140}
+              height={40}
+              className="h-10 w-auto"
+              priority
+            />
           </Link>
 
           <nav className="hidden md:flex items-center gap-10 text-sm font-medium text-muted-foreground">
@@ -438,6 +439,34 @@ export default function Home() {
               />
             </motion.div>
           </motion.div>
+        </section>
+
+        {/* Trust Badges */}
+        <section className="py-12 border-b border-border/40">
+          <div className="container mx-auto px-6">
+            <motion.div
+              className="flex flex-col items-center justify-center gap-4"
+              initial={{ opacity: 0, y: 20 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              viewport={{ once: true }}
+              transition={{ duration: 0.6 }}
+            >
+              <p className="text-sm text-muted-foreground">Backed by</p>
+              <div className="flex items-center gap-8">
+                <a
+                  href="https://deepgram.com/startup-program"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center gap-2 text-muted-foreground hover:text-foreground transition-colors"
+                >
+                  <svg viewBox="0 0 24 24" className="h-6 w-6" fill="currentColor">
+                    <path d="M12.003 0C5.379 0 .006 5.373.006 12s5.373 12 11.997 12c6.628 0 11.997-5.373 11.997-12S18.63 0 12.003 0zm4.457 16.822h-2.48v-2.353h2.48v2.353zm0-3.63h-2.48V7.178h2.48v6.014zm-3.731 3.63H10.25v-2.353h2.479v2.353zm0-3.63H10.25V7.178h2.479v6.014zm-3.731 3.63H6.519v-2.353h2.479v2.353zm0-3.63H6.519V7.178h2.479v6.014z"/>
+                  </svg>
+                  <span className="text-sm font-medium">Deepgram Startup Program</span>
+                </a>
+              </div>
+            </motion.div>
+          </div>
         </section>
 
         {/* Features Section */}
@@ -959,11 +988,14 @@ export default function Home() {
         <div className="container mx-auto px-6">
           <div className="grid grid-cols-2 md:grid-cols-4 gap-8 mb-12">
             <div className="col-span-2 md:col-span-1">
-              <Link href="/" className="flex items-center gap-3 mb-4">
-                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary text-primary-foreground">
-                  <Volume2 className="h-5 w-5" />
-                </div>
-                <span className="text-xl font-bold">VOXAM</span>
+              <Link href="/" className="flex items-center gap-2 mb-4">
+                <Image
+                  src="/logo-full.png"
+                  alt="VOXAM"
+                  width={120}
+                  height={35}
+                  className="h-9 w-auto"
+                />
               </Link>
               <p className="text-sm text-muted-foreground leading-relaxed">
                 Revolutionizing education through conversational AI assessment.
