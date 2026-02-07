@@ -635,7 +635,7 @@ def agent(state: State) -> State:
             if len(human_messages) == 1:
                 state["response_type"] = "instruction"
                 state["response_options"] = None
-            elif "next question" in last_human.lower() or state.get("exam_started") and current_question.get("text") in response.content:
+            elif any(p in last_human.lower() for p in ["next question", "next", "skip", "move on", "continue", "proceed", "next one", "go ahead"]) or state.get("exam_started") and current_question.get("text") in response.content:
                 state["response_type"] = "question"
                 state["response_options"] = current_question.get("options") or None
             else:
@@ -649,8 +649,34 @@ def agent(state: State) -> State:
     return state
 
 
-# ToolNode (executes tool calls)
-tool_node = ToolNode(tools)
+# SafeToolNode: catches tool exceptions and returns error ToolMessage
+# instead of crashing the entire graph invocation (which causes student silence)
+class SafeToolNode(ToolNode):
+    async def ainvoke(self, state, config=None):
+        try:
+            return await super().ainvoke(state, config)
+        except Exception as e:
+            print(f"❌ Tool error: {e}")
+            last_msg = state["messages"][-1]
+            tool_call_id = last_msg.tool_calls[0]["id"] if hasattr(last_msg, "tool_calls") and last_msg.tool_calls else "error"
+            return {"messages": [ToolMessage(
+                content=f"[ERROR] Tool failed: {str(e)}. Please try again or skip.",
+                tool_call_id=tool_call_id
+            )]}
+
+    def invoke(self, state, config=None):
+        try:
+            return super().invoke(state, config)
+        except Exception as e:
+            print(f"❌ Tool error: {e}")
+            last_msg = state["messages"][-1]
+            tool_call_id = last_msg.tool_calls[0]["id"] if hasattr(last_msg, "tool_calls") and last_msg.tool_calls else "error"
+            return {"messages": [ToolMessage(
+                content=f"[ERROR] Tool failed: {str(e)}. Please try again or skip.",
+                tool_call_id=tool_call_id
+            )]}
+
+tool_node = SafeToolNode(tools)
 
 def process_tool_response(state: State) -> State:
     """Process tool responses and update state accordingly.
@@ -735,14 +761,30 @@ def process_tool_response(state: State) -> State:
     return state
 
 def cleanup_exam(state: State) -> State:
-    """Trigger correction task instead of immediate cleanup."""
+    """Update session status and trigger correction task."""
     from tasks.correction import trigger_correction
-    
+
     qp_id = state["qp_id"]
     thread_id = state["thread_id"]
     user_id = state.get("user_id", "unknown")
     exam_id = f"exam_{qp_id}_{int(time.time())}"
-    
+
+    # Update ExamSession status so frontend knows exam is done
+    try:
+        from supabase import create_client
+        from datetime import datetime, timezone
+        supabase = create_client(
+            os.getenv("NEXT_PUBLIC_SUPABASE_URL"),
+            os.getenv("SUPABASE_SERVICE_ROLE_KEY")
+        )
+        supabase.table("ExamSession").update({
+            "status": "COMPLETED",
+            "endedAt": datetime.now(timezone.utc).isoformat(),
+        }).eq("threadId", thread_id).execute()
+        print(f"✅ ExamSession marked COMPLETED for thread {thread_id}")
+    except Exception as e:
+        print(f"⚠️ Failed to update session status: {e}")
+
     try:
         # Trigger async correction (Celery) - QP cleanup happens there
         task_id = trigger_correction(

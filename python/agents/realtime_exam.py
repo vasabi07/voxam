@@ -195,7 +195,10 @@ async def handle_reconnect(
 
     # Speak via TTS
     await tts_queue.enqueue(reconnect_msg)
-    await tts_queue.wait_until_empty()
+    try:
+        await asyncio.wait_for(tts_queue.wait_until_empty(), timeout=30.0)
+    except asyncio.TimeoutError:
+        print("⚠️ TTS queue timeout during reconnect - continuing anyway")
 
 
 async def start_exam_agent(
@@ -365,74 +368,79 @@ async def start_exam_agent(
     cached_question = None
     cached_total = None
     greeting_sent = False  # Track if greeting has been sent
+    greeting_lock = asyncio.Lock()  # Prevent race between connect and first speech
 
     async def trigger_greeting():
         """Trigger the greeting when student connects (before they speak)."""
         nonlocal first_invocation, cached_question, cached_total, greeting_sent
 
-        if greeting_sent:
-            return  # Already greeted
+        async with greeting_lock:
+            if greeting_sent:
+                return  # Already greeted
 
-        try:
-            print(f"\n{'='*60}")
-            print(f"🎉 Triggering greeting for new session...")
-            print(f"{'='*60}\n")
-
-            # Preload questions
-            if first_invocation:
-                cached_question, cached_total = preload_first_question(qp_id)
-                if cached_question:
-                    print(f"📚 Preloaded first question ({cached_total} total)")
-                else:
-                    print(f"⚠️ Failed to preload questions for QP: {qp_id}")
-                first_invocation = False
-
-            # Create state with SESSION_START marker to trigger greeting
-            import time as time_module
-            exam_state = ExamState(
-                messages=[HumanMessage(content="[SESSION_START]")],
-                thread_id=thread_id,
-                qp_id=qp_id,
-                current_index=0,
-                current_question=cached_question,
-                total_questions=cached_total,
-                exam_started=False,  # This triggers GREETING_PROMPT
-                exam_start_time=time_module.time(),  # Initialize exam start time
-                question_start_time=time_module.time(),  # First question starts now
-            )
-
-            # Configuration for checkpointer
-            config = {"configurable": {"thread_id": thread_id}}
-
-            # Use streaming to get greeting response
-            ai_response = None
-            async for event in exam_agent_graph.astream(exam_state, config=config):
-                for node_name, state_update in event.items():
-                    if "messages" in state_update:
-                        for msg in state_update["messages"]:
-                            if isinstance(msg, AIMessage) and msg.content:
-                                ai_response = msg.content
-
-            if ai_response:
+            try:
                 print(f"\n{'='*60}")
-                print(f"👋 GREETING:")
-                print(f"{ai_response}")
+                print(f"🎉 Triggering greeting for new session...")
                 print(f"{'='*60}\n")
 
-                # Send greeting via data channel
-                await send_data_message(room, "instruction", ai_response)
+                # Preload questions
+                if first_invocation:
+                    cached_question, cached_total = preload_first_question(qp_id)
+                    if cached_question:
+                        print(f"📚 Preloaded first question ({cached_total} total)")
+                    else:
+                        print(f"⚠️ Failed to preload questions for QP: {qp_id}")
+                    first_invocation = False
 
-                # Stream TTS greeting (enqueue to TTSQueue)
-                await tts_queue.enqueue(ai_response)
-                await tts_queue.wait_until_empty()
-                print("✅ Greeting complete")
+                # Create state with SESSION_START marker to trigger greeting
+                import time as time_module
+                exam_state = ExamState(
+                    messages=[HumanMessage(content="[SESSION_START]")],
+                    thread_id=thread_id,
+                    qp_id=qp_id,
+                    current_index=0,
+                    current_question=cached_question,
+                    total_questions=cached_total,
+                    exam_started=False,  # This triggers GREETING_PROMPT
+                    exam_start_time=time_module.time(),  # Initialize exam start time
+                    question_start_time=time_module.time(),  # First question starts now
+                )
 
-            greeting_sent = True
+                # Configuration for checkpointer
+                config = {"configurable": {"thread_id": thread_id}}
 
-        except Exception as e:
-            print(f"❌ ERROR triggering greeting: {e}")
-            import traceback
-            traceback.print_exc()
+                # Use streaming to get greeting response
+                ai_response = None
+                async for event in exam_agent_graph.astream(exam_state, config=config):
+                    for node_name, state_update in event.items():
+                        if "messages" in state_update:
+                            for msg in state_update["messages"]:
+                                if isinstance(msg, AIMessage) and msg.content:
+                                    ai_response = msg.content
+
+                if ai_response:
+                    print(f"\n{'='*60}")
+                    print(f"👋 GREETING:")
+                    print(f"{ai_response}")
+                    print(f"{'='*60}\n")
+
+                    # Send greeting via data channel
+                    await send_data_message(room, "instruction", ai_response)
+
+                    # Stream TTS greeting (enqueue to TTSQueue)
+                    await tts_queue.enqueue(ai_response)
+                    try:
+                        await asyncio.wait_for(tts_queue.wait_until_empty(), timeout=30.0)
+                    except asyncio.TimeoutError:
+                        print("⚠️ TTS queue timeout during greeting - continuing anyway")
+                    print("✅ Greeting complete")
+
+                greeting_sent = True
+
+            except Exception as e:
+                print(f"❌ ERROR triggering greeting: {e}")
+                import traceback
+                traceback.print_exc()
 
     async def process_complete_transcript_with_prosody(full_transcript: str, metadata: TurnMetadata):
         """
@@ -482,43 +490,10 @@ async def start_exam_agent(
             # Configuration for checkpointer
             config = {"configurable": {"thread_id": thread_id}}
 
-            # Retrieve current state from checkpoint to preserve current_index
-            try:
-                saved_state = exam_agent_graph.get_state(config)
-                if saved_state and saved_state.values:
-                    current_index = saved_state.values.get("current_index", 0)
-                    current_question = saved_state.values.get("current_question", cached_question)
-                    exam_started = saved_state.values.get("exam_started", greeting_sent)
-                    print(f"📍 Restored state: current_index={current_index}, exam_started={exam_started}")
-                else:
-                    current_index = 0
-                    current_question = cached_question
-                    exam_started = greeting_sent
-                    print(f"📍 No saved state, using defaults: current_index={current_index}")
-            except Exception as e:
-                print(f"⚠️ Could not restore state: {e}, using defaults")
-                current_index = 0
-                current_question = cached_question
-                exam_started = greeting_sent
-
-            # Create exam state with RESTORED values
-            import time as time_module
-            exam_state = ExamState(
-                messages=[HumanMessage(content=full_transcript)],
-                thread_id=thread_id,
-                qp_id=qp_id,
-                current_index=current_index,
-                current_question=current_question,
-                total_questions=cached_total,
-                exam_started=exam_started,
-                # Restore time tracking from saved state
-                exam_start_time=saved_state.values.get("exam_start_time") if saved_state and saved_state.values else time_module.time(),
-                question_start_time=saved_state.values.get("question_start_time") if saved_state and saved_state.values else time_module.time(),
-                time_per_question=saved_state.values.get("time_per_question") if saved_state and saved_state.values else {},
-                warned_5min=saved_state.values.get("warned_5min", False) if saved_state and saved_state.values else False,
-                warned_2min=saved_state.values.get("warned_2min", False) if saved_state and saved_state.values else False,
-                warned_1min=saved_state.values.get("warned_1min", False) if saved_state and saved_state.values else False,
-            )
+            # Checkpointer automatically restores all state fields from last invocation.
+            # add_messages reducer appends the new HumanMessage to existing messages.
+            # No manual restoration needed for current_index, current_question, time tracking, etc.
+            exam_state = {"messages": [HumanMessage(content=full_transcript)]}
 
             # Track the final response
             final_response = None
@@ -564,7 +539,10 @@ async def start_exam_agent(
                 await tts_queue.enqueue(final_response)
 
                 # Wait for all TTS to complete
-                await tts_queue.wait_until_empty()
+                try:
+                    await asyncio.wait_for(tts_queue.wait_until_empty(), timeout=30.0)
+                except asyncio.TimeoutError:
+                    print("⚠️ TTS queue timeout - continuing anyway")
                 print("✅ Agent response complete")
 
                 # Check for time warnings after response completes
@@ -578,7 +556,10 @@ async def start_exam_agent(
                             await send_data_message(room, "warning", warning_msg)
                             # Speak the warning
                             await tts_queue.enqueue(warning_msg)
-                            await tts_queue.wait_until_empty()
+                            try:
+                                await asyncio.wait_for(tts_queue.wait_until_empty(), timeout=30.0)
+                            except asyncio.TimeoutError:
+                                print("⚠️ TTS queue timeout on warning - continuing anyway")
                 except Exception as e:
                     print(f"⚠️ Error checking time warnings: {e}")
             else:

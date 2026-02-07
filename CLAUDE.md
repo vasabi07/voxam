@@ -13,6 +13,7 @@ VOXAM is an AI-powered educational examination platform that enables students to
 voxam/
 ├── nextjs/          # Frontend - Next.js 15, React 19, TypeScript
 ├── python/          # Backend - FastAPI, LangGraph agents
+├── marketing/       # Marketing content & Remotion videos
 └── supabase/        # Database migrations (Postgres via Supabase)
 ```
 
@@ -102,9 +103,9 @@ redis-server          # Redis for caching and Celery
 ## Key Patterns
 
 ### Authentication
-- Better-Auth with Supabase JWT (ES256 algorithm)
+- Supabase Auth with JWT (ES256 algorithm)
 - Token verification in `python/security.py` using JWKS
-- Middleware in `api.py` protects `/copilotkit` endpoint
+- Middleware in `api.py` protects authenticated endpoints
 
 ### LangGraph State Persistence
 - Uses `AsyncRedisSaver` for conversation checkpointing
@@ -125,3 +126,53 @@ Located at `nextjs/prisma/schema.prisma`. Key models:
 - `Document` - Status: PENDING → PROCESSING → READY/FAILED
 - `QuestionPaper` - Generated QP with `questions` JSON field
 - `ExamSession` - Links user, document, QP; has `CorrectionReport`
+
+## Marketing
+
+### Structure
+```
+marketing/
+├── context/           # Brand knowledge base
+│   ├── brand-voice.md     # Voice, tone, messaging
+│   ├── icp.md             # Ideal customer profiles
+│   ├── product-features.md # Features and benefits
+│   ├── positioning.md     # Market positioning
+│   └── writing-core.md    # Writing principles
+├── output/            # Generated content
+│   ├── blogs/
+│   ├── social/
+│   ├── emails/
+│   ├── visuals/
+│   ├── research/
+│   └── publish-ready/
+└── remotion/          # Video production
+```
+
+### Marketing Commands
+Use these slash commands for marketing tasks:
+- `/blog-write [topic]` - Write a blog post
+- `/social-carousel [topic]` - Create Instagram carousel spec
+- `/social-thread [topic]` - Create Twitter/X thread
+- `/email-write [type] [topic]` - Write marketing email
+- `/content-research [topic]` - Research content opportunities
+
+### Marketing Skills
+Located in `.claude/skills/`:
+- `write/` - Content writing (blogs, social, email)
+- `research/` - SEO and competitor research
+- `visual/` - Visual content specs (carousels, images)
+- `publish/` - Publishing preparation
+
+### Key Marketing Principles
+1. **Value First**: 80% helpful content, 20% product mention
+2. **Voice Focus**: Emphasize that voice tests understanding, not just format
+3. **No AI Slop**: Avoid cliché phrases like "In today's fast-paced world"
+4. **The Shift**: Frame as cursive → calculators → AI exams (natural evolution)
+
+### Remotion Videos
+```bash
+cd marketing/remotion
+npm install
+npm run dev      # Preview at localhost:3000
+npm run build    # Render final video
+```

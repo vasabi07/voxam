@@ -6,12 +6,15 @@ import asyncio
 import os
 import time
 import re
+import json
+import base64
 from typing import Optional, Callable, Awaitable, Any
 from livekit import rtc
 from dotenv import load_dotenv
 from deepgram import AsyncDeepgramClient
 from deepgram.core.events import EventType
 from google.cloud import texttospeech
+import websockets
 
 # Load environment variables
 load_dotenv(dotenv_path=".env", override=False)
@@ -20,6 +23,7 @@ load_dotenv(dotenv_path=".env.local", override=True)
 # LiveKit configuration
 LIVEKIT_URL = os.getenv("LIVEKIT_URL")
 DEEPGRAM_API_KEY = os.getenv("DEEPGRAM_API_KEY")
+TOGETHER_API_KEY = os.getenv("TOGETHER_API_KEY")
 
 if not LIVEKIT_URL:
     raise ValueError("Missing LIVEKIT_URL environment variable. Please check your .env.local file.")
@@ -36,10 +40,10 @@ dg_tts_client = AsyncDeepgramClient(api_key=DEEPGRAM_API_KEY)
 # TTS UTILITIES
 # ============================================================
 
-async def generate_and_stream_tts(text: str, audio_source: rtc.AudioSource, region: str = "india") -> bool:
+async def generate_and_stream_tts(text: str, audio_source: rtc.AudioSource, region: str = "orpheus") -> bool:
     """
     Generate TTS audio and stream to LiveKit.
-    Uses Google Neural2 for India, Deepgram Aura for global users.
+    Uses Together AI Orpheus (expressive), Google Neural2 for India, or Deepgram Aura for global.
 
     Applies TTS preprocessing to convert:
     - Mathematical notation (², π, ∫) to spoken words
@@ -50,7 +54,7 @@ async def generate_and_stream_tts(text: str, audio_source: rtc.AudioSource, regi
     Args:
         text: Text to convert to speech
         audio_source: LiveKit audio source to stream to
-        region: "india" for Google Neural2, "global" for Deepgram Aura
+        region: "orpheus" for Together AI Orpheus (expressive), "india" for Google Neural2, "global" for Deepgram Aura
 
     Returns:
         True if successful, False otherwise
@@ -64,9 +68,11 @@ async def generate_and_stream_tts(text: str, audio_source: rtc.AudioSource, regi
         text = optimize_for_tts(text)
         print(f"🎵 Generating TTS [{region.upper()}] for: '{text[:80]}...'")
 
-        if region == "india":
+        if region == "orpheus":
+            audio_data = await generate_tts_orpheus(text)
+        elif region == "india":
             audio_data = await generate_tts_google(text)
-        else:
+        else:  # "global" or any other fallback
             audio_data = await generate_tts_deepgram(text)
 
         if not audio_data:
@@ -138,6 +144,54 @@ async def generate_tts_deepgram(text: str) -> Optional[bytes]:
     return b"".join(audio_chunks)
 
 
+async def generate_tts_orpheus(text: str, voice: str = "tara") -> Optional[bytes]:
+    """Generate TTS using Together AI Orpheus 3B (expressive voice).
+
+    Orpheus offers 8 voices: tara, leah, jess, leo, dan, mia, zac, zoe.
+    Returns 48kHz audio directly from the API.
+    Falls back to Deepgram Aura on error.
+    """
+    if not TOGETHER_API_KEY:
+        print("⚠️ TOGETHER_API_KEY not set, falling back to Deepgram")
+        return await generate_tts_deepgram(text)
+
+    # Request 48kHz directly from Together AI (LiveKit requirement)
+    url = f"wss://api.together.ai/v1/audio/speech/websocket?model=canopylabs/orpheus-3b-0.1-ft&voice={voice}&sample_rate=48000"
+
+    try:
+        async with websockets.connect(
+            url,
+            additional_headers={"Authorization": f"Bearer {TOGETHER_API_KEY}"}
+        ) as ws:
+            # Wait for session.created
+            await ws.recv()
+
+            # Send text
+            await ws.send(json.dumps({
+                "type": "input_text_buffer.append",
+                "text": text
+            }))
+            await ws.send(json.dumps({"type": "input_text_buffer.commit"}))
+
+            # Collect audio chunks
+            audio_chunks = []
+            async for msg in ws:
+                event = json.loads(msg)
+                if event["type"] == "conversation.item.audio_output.delta":
+                    audio_chunks.append(base64.b64decode(event["delta"]))
+                elif event["type"] == "conversation.item.audio_output.done":
+                    break
+                elif event["type"] == "conversation.item.tts.failed":
+                    print(f"⚠️ Orpheus TTS failed: {event.get('error', {}).get('message')}")
+                    return await generate_tts_deepgram(text)
+
+            return b"".join(audio_chunks)
+
+    except Exception as e:
+        print(f"⚠️ Orpheus error: {e}, falling back to Deepgram")
+        return await generate_tts_deepgram(text)
+
+
 def split_into_sentences(text: str) -> list[str]:
     """Split text into sentences for progressive TTS streaming."""
     sentence_pattern = re.compile(r'([^.!?]+[.!?]+)')
@@ -154,7 +208,7 @@ def split_into_sentences(text: str) -> list[str]:
 async def stream_tts_sentences(
     text: str,
     audio_source: rtc.AudioSource,
-    region: str = "india"
+    region: str = "orpheus"
 ) -> None:
     """Stream TTS for each sentence progressively."""
     sentences = split_into_sentences(text)

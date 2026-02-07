@@ -741,7 +741,7 @@ class ExamSessionRequest(BaseModel):
     thread_id: str
     session_id: str  # ExamSession database ID for tracking
     mode: str = "exam"  # "exam" or "learn"
-    region: str = "india"  # "india" or "global" for geo-based TTS
+    region: str = "orpheus"  # "orpheus" (expressive), "india" (Google), or "global" (Deepgram)
 
 
 @app.post("/start-exam-session")
@@ -1308,7 +1308,7 @@ async def create_learn_pack(request_data: LPCreateRequest, user: dict = Depends(
 
 class LearnSessionRequest(BaseModel):
     thread_id: str
-    region: str = "india"
+    region: str = "orpheus"
     # LP-based flow (legacy) - optional
     lp_id: Optional[str] = None
     # NEW: Zero-setup conversational flow - agent discovers everything
